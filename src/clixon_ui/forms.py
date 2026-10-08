@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from html import escape
 
 from nicegui import ui
 
@@ -20,15 +22,39 @@ def _hint(c: Node) -> str:
     return h.replace('"', "'")
 
 
-def _label(c: Node, required: bool) -> str:
-    return f"{c.name} *" if required else c.name
+
+@contextmanager
+def field_row(name: str, required: bool) -> Iterator[ui.label]:
+    """Label on the left, input on the right: `name *` in a fixed-width column, widgets go in the right column."""
+    with ui.row().classes("w-full items-start no-wrap gap-3"):
+        star = ' <span class="err-tx">*</span>' if required else ""
+        lab = ui.html(f"{escape(name)}{star}").classes("w-40 shrink-0 pt-2 text-sm font-medium break-words")
+        with ui.column().classes("grow min-w-0 gap-0"):
+            yield lab
 
 
-def _hintprops(el, c: Node):
+def _mark_required(el, required: bool, value) -> None:
+    """Red border while a mandatory field is empty; it goes away as soon as there is a value."""
+    if not required:
+        return
+
+    def sync(v) -> None:
+        if _empty(v):
+            el.classes(add="req-empty")
+        else:
+            el.classes(remove="req-empty")
+
+    sync(value)
+    el.on_value_change(lambda e: sync(e.value))
+
+
+def _hintprops(el, c: Node, lab=None):
     el.props("outlined dense")
     h = _hint(c)
-    if len(h) > 70:  # long text would overflow the hint line: show on hover instead
+    if len(h) > 70:  # long text would overflow the hint line: show on hover (over the label too) instead
         el.tooltip(h)
+        if lab is not None:
+            lab.tooltip(h)
         el.props('hint="hover for details"')
     elif h:
         el.props(f'hint="{h}"')
@@ -77,55 +103,54 @@ def render_child(c: Node, parent: Node, data: dict, lookup: Lookup, touch: Touch
 def render_leaf(c: Node, parent: Node, data: dict, lookup: Lookup, touch: Touch, locked: bool = False) -> None:
     t = c.type
     required = _is_required(c, parent)
-    label = _label(c, required)
     val = data.get(c.name)
     cls = "w-full max-w-2xl"
     err = lambda v: type_error(t, v, lookup)  # noqa: E731
 
-    if t.base == "boolean":
-        initial = val if val is not None else (c.default == "true")
-        el = ui.switch(c.name, value=bool(initial), on_change=lambda e: (data.__setitem__(c.name, bool(e.value)), touch()))
-        if c.description:
-            el.tooltip(c.description)
-        return
-    if t.base == "empty":
-        el = ui.switch(c.name, value=bool(val), on_change=lambda e: _set(data, c.name, True if e.value else None, touch))
-        if c.description:
-            el.tooltip(c.description)
-        return
+    with field_row(c.name, required) as lab:
+        if t.base in ("boolean", "empty"):
+            if t.base == "boolean":
+                initial = val if val is not None else (c.default == "true")
+                el = ui.switch(value=bool(initial), on_change=lambda e: (data.__setitem__(c.name, bool(e.value)), touch()))
+            else:
+                el = ui.switch(value=bool(val), on_change=lambda e: _set(data, c.name, True if e.value else None, touch))
+            if c.description:
+                el.tooltip(c.description)
+                lab.tooltip(c.description)
+            return
 
-    options: list | None = None
-    if t.base == "enum":
-        options = t.enums
-    elif t.base == "identityref" and t.identities:
-        options = t.identities
-    elif t.base == "leafref":
-        options = lookup.values(t.path) or None
-    if options:
-        options = list(options)
-        if val is not None and val not in options:
-            options.append(val)
-        el = ui.select(options, label=label, value=val, with_input=True, clearable=not required,
-                       on_change=lambda e: _set(data, c.name, e.value, touch)).classes(cls)
-    elif t.base in ("int", "decimal"):
-        lo, hi = t.range or (None, None)
-        el = ui.number(label, value=val, min=lo, max=hi, precision=0 if t.base == "int" else None,
-                       step=1 if t.base == "int" else 0.01, validation=err,
-                       on_change=lambda e: _set(data, c.name, None if e.value is None else (int(e.value) if t.base == "int" else e.value), touch)).classes(cls)
-    else:
-        el = ui.input(label, value="" if val is None else str(val), validation=err,
-                      on_change=lambda e: _set(data, c.name, e.value, touch)).classes(cls)
-        if c.default is not None:
-            el.props(f'placeholder="{c.default}"')
-    _hintprops(el, c)
-    if locked:
-        el.props("readonly")
-        el.tooltip("Key of an existing instance cannot be changed")
+        options: list | None = None
+        if t.base == "enum":
+            options = t.enums
+        elif t.base == "identityref" and t.identities:
+            options = t.identities
+        elif t.base == "leafref":
+            options = lookup.values(t.path) or None
+        if options:
+            options = list(options)
+            if val is not None and val not in options:
+                options.append(val)
+            el = ui.select(options, value=val, with_input=True, clearable=not required,
+                           on_change=lambda e: _set(data, c.name, e.value, touch)).classes(cls)
+        elif t.base in ("int", "decimal"):
+            lo, hi = t.range or (None, None)
+            el = ui.number(value=val, min=lo, max=hi, precision=0 if t.base == "int" else None,
+                           step=1 if t.base == "int" else 0.01, validation=err,
+                           on_change=lambda e: _set(data, c.name, None if e.value is None else (int(e.value) if t.base == "int" else e.value), touch)).classes(cls)
+        else:
+            el = ui.input(value="" if val is None else str(val), validation=err,
+                          on_change=lambda e: _set(data, c.name, e.value, touch)).classes(cls)
+            if c.default is not None:
+                el.props(f'placeholder="{c.default}"')
+        _hintprops(el, c, lab)
+        _mark_required(el, required and not locked, val)
+        if locked:
+            el.props("readonly")
+            el.tooltip("Key of an existing instance cannot be changed")
 
 
 def render_leaf_list(c: Node, data: dict, lookup: Lookup, touch: Touch) -> None:
     t = c.type
-    label = _label(c, c.min_elements > 0)
     cur = list(data.get(c.name, []))
     opts = None
     if t.base == "leafref":
@@ -151,18 +176,26 @@ def render_leaf_list(c: Node, data: dict, lookup: Lookup, touch: Touch) -> None:
             out.append(x)
         return out
 
-    if opts:
-        opts = list(dict.fromkeys([*opts, *cur]))
-        el = ui.select(opts, label=label, value=cur, multiple=True, with_input=True,
-                       on_change=lambda e: _set(data, c.name, list(e.value or []), touch)).props("use-chips outlined dense").classes("w-full max-w-2xl")
-    else:
-        el = ui.input_chips(label, value=[str(x) for x in cur], new_value_mode="add-unique",
-                            validation=lambda items: _first_error(t, lookup, conv(items or [])),
-                            on_change=lambda e: _set(data, c.name, conv(e.value or []), touch)).classes("w-full max-w-2xl")
-        el.props("outlined dense")
-        el.props('hint="type a value and press Enter"' if not c.description else f'hint="{c.description.replace(chr(34), chr(39))} — press Enter to add"')
-        return
-    _hintprops(el, c)
+    with field_row(c.name, c.min_elements > 0) as lab:
+        if opts:
+            opts = list(dict.fromkeys([*opts, *cur]))
+            el = ui.select(opts, value=cur, multiple=True, with_input=True,
+                           on_change=lambda e: _set(data, c.name, list(e.value or []), touch)).props("use-chips outlined dense").classes("w-full max-w-2xl")
+            _hintprops(el, c, lab)
+            _mark_required(el, c.min_elements > 0, cur)
+        else:
+            el = ui.input_chips(value=[str(x) for x in cur], new_value_mode="add-unique",
+                                validation=lambda items: _first_error(t, lookup, conv(items or [])),
+                                on_change=lambda e: _set(data, c.name, conv(e.value or []), touch)).classes("w-full max-w-2xl")
+            el.props("outlined dense")
+            d = c.description.replace(chr(34), chr(39))
+            if len(d) > 55:
+                el.tooltip(d)
+                lab.tooltip(d)
+                el.props('hint="type a value and press Enter · hover for details"')
+            else:
+                el.props(f'hint="{d + " · " if d else ""}type a value and press Enter"')
+            _mark_required(el, c.min_elements > 0, cur)
 
 
 # ------------------------------------------------------------------ structure

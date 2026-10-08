@@ -12,12 +12,12 @@ CSS = """
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400 500;font-display:swap;src:url(/static/fonts/JetBrainsMono-latin.woff2) format('woff2')}
 :root{
  --bg:#f4f6f8;--panel:#fff;--side:#fff;--line:#e3e8ee;--line-2:#cdd5df;
- --tx:#14233a;--mut:#66758a;--acc:#1f5eff;--on-acc:#fff;
- --nav-tx:#4a5a6e;--nav-on:#eaf1ff;--nav-on-tx:#0f2238;--hover:#f3f6fb;
+ --tx:#0a0f1a;--mut:#1c2533;--acc:#1f5eff;--on-acc:#fff;
+ --nav-tx:#0a0f1a;--nav-on:#eaf1ff;--nav-on-tx:#0f2238;--hover:#f3f6fb;
  --ok:#0b7a4b;--ok-bg:#e3f5ec;--err:#c8321f;--err-bg:#fdeae6;--wa:#9a6700;--wa-bg:#fff3d1;
  --add:#0a6b3d;--add-bg:#e6f6ec;--del:#a52b1b;--del-bg:#fdecea;
  --font:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
- --r:12px;--r-s:8px;--shadow:0 1px 2px #14233a0d,0 4px 14px #14233a0a}
+ --header-h:60px;--r:12px;--r-s:8px;--shadow:0 1px 2px #14233a0d,0 4px 14px #14233a0a}
 
 body,.q-page,.q-layout{background:var(--bg)!important;color:var(--tx);font:15px/1.5 var(--font)}
 .q-btn,.q-field,.q-item,.q-table,.q-tab,.q-expansion-item,.q-badge,.q-tooltip,.q-menu,.q-dialog,.q-notification,.q-toggle,.q-chip,.q-btn-toggle{font-family:var(--font)!important}
@@ -32,7 +32,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .line{border-color:var(--line)!important}
 .bg-page{background:var(--bg)}
 .err-box{background:var(--err-bg);color:var(--err);border-radius:8px;padding:8px 12px}
-.q-header{background:var(--panel)!important;color:var(--tx)!important;border:0!important;box-shadow:none!important}
+.q-header{height:var(--header-h)!important;min-height:var(--header-h)!important;background:var(--panel)!important;color:var(--tx)!important;border:0!important;box-shadow:none!important}
 .q-drawer{background:var(--side)!important;border:0!important;box-shadow:none!important}
 .q-drawer--bordered,.q-drawer--left.q-drawer--bordered{border:0!important}
 
@@ -41,8 +41,8 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer .q-item--active .q-icon.material-icons{font-family:'Material Icons'!important}
 
 /* row action icons: quiet by default, colour on hover */
-.row-actions .q-btn{color:var(--mut)!important;opacity:.85}
-.row-actions .q-btn:hover{color:var(--acc)!important;opacity:1;background:var(--hover)}
+.row-actions .q-btn{color:var(--tx)!important}
+.row-actions .q-btn:hover{color:var(--acc)!important;background:var(--hover)}
 .row-actions .q-btn.act-del:hover{color:var(--err)!important;background:var(--err-bg)}
 
 /* menu */
@@ -67,6 +67,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-btn.q-btn--outline .q-icon{color:var(--nav-tx)!important}
 .q-btn.bg-primary{color:var(--on-acc)!important}
 .q-btn.q-btn--flat:not(.q-btn--round):hover{background:var(--hover)}
+.q-btn.q-btn--flat:not(.q-btn--round),.q-btn.q-btn--flat:not(.q-btn--round) .q-btn__content,.q-btn.q-btn--flat:not(.q-btn--round) .q-icon{color:var(--tx)!important}
 .q-btn-toggle{border:1px solid var(--line-2);border-radius:var(--r-s)!important;overflow:hidden}
 .q-btn-toggle .q-btn{background:#fff;color:var(--nav-tx)!important;border-radius:0!important}
 .q-btn-toggle .q-btn.bg-primary{background:var(--acc)!important;color:#fff!important}
@@ -83,7 +84,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-table th{color:var(--tx)!important;font-weight:700!important;font-size:13px;border-color:var(--line)!important;background:transparent}
 .q-table td{border-color:var(--line)!important;color:var(--tx)}
 .q-table tbody tr:hover td{background:var(--hover)!important}
-.q-table tbody td.mono{font-size:12.5px;color:var(--mut)}
+.q-table tbody td.mono{font-size:12.5px;color:var(--tx)}
 .q-table tbody td.name{font-weight:600}
 .q-table__bottom{color:var(--mut);border-color:var(--line)!important}
 
@@ -97,6 +98,10 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-field--outlined .q-field__control:before{border-color:var(--line-2)}
 .q-field--outlined:not(.q-field--readonly) .q-field__control:hover:before{border-color:var(--mut)}
 .q-field__label,.q-field__bottom{color:var(--mut)}
+.q-field__native::placeholder,.q-field__input::placeholder{color:var(--mut)!important;opacity:1!important}
+.q-field--outlined .q-field__native,.q-field--outlined .q-field__input{color:var(--tx)}
+.q-tab{color:var(--tx)}
+.q-table th{color:var(--tx)!important}
 .q-field--readonly .q-field__control{background:#f4f6f8}
 .q-field--readonly .q-field__control:before{border-style:dashed}
 
@@ -107,6 +112,16 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-table tbody tr.rail-bad td:first-child{box-shadow:inset 3px 0 0 var(--err)}
 .q-table tbody tr.rail-warn td:first-child{box-shadow:inset 3px 0 0 var(--wa)}
 
+.q-tree__node-header-content,.q-tree__node-header-content *{color:var(--tx)!important}
+.q-tree__node--selected>.q-tree__node-header{background:var(--nav-on)!important}
+.q-tree__node--selected>.q-tree__node-header .q-tree__node-header-content{font-weight:600}
+.q-tree__node-header.q-tree__node--disabled,.q-tree__node--disabled{opacity:1!important}
+
+/* mandatory field that is still empty: red border (removed from the element once it has a value) */
+.q-field--outlined.req-empty .q-field__control:before,
+.q-field--outlined.req-empty:not(.q-field--readonly) .q-field__control:hover:before{border-color:var(--err)!important}
+.q-field--outlined.req-empty.q-field--focused .q-field__control:after{border-color:var(--err)!important}
+
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
 .pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
@@ -116,7 +131,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 DIFF_CSS = """
 .confbody{font:12.5px/1.6 var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 0;overflow:auto;height:62vh;white-space:pre}
 .cl{padding:0 14px 0 0}.cl:hover{background:var(--hover)}
-.ln{display:inline-block;width:5ch;margin-right:14px;text-align:right;color:var(--mut);opacity:.7;user-select:none}
+.ln{display:inline-block;width:5ch;margin-right:14px;text-align:right;color:var(--mut);user-select:none}
 .confbody mark{background:#ffe58a;color:inherit;border-radius:2px}
 .dl{white-space:pre;padding:0 12px;min-height:1.5em;border-left:3px solid transparent}
 .dl-add{background:var(--add-bg);color:var(--add);border-left-color:var(--add)}

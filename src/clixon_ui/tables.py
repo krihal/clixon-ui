@@ -13,7 +13,7 @@ RAIL_SERVICE = "row.status == 'Deployed' ? 'rail-ok' : 'rail-warn'"  # has the s
 
 RAIL_RPC = "row.type == 'read' ? 'rail-ok' : 'rail-warn'"  # read-only vs may change the device
 
-FILL_HEIGHT = "calc(100vh - 80px)"  # viewport minus header and page padding
+FILL_HEIGHT = "calc(100vh - var(--header-h) - 32px)"  # viewport minus header and page padding
 
 
 def page_column() -> ui.column:

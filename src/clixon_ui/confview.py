@@ -87,7 +87,10 @@ def outline(cfg: dict) -> list[dict]:
                     if "name" in e:
                         eid = f"{path}={quote(str(e['name']), safe='')}"
                         kids.append({"id": eid, "label": str(e["name"]), "children": build({a: b for a, b in e.items() if a != "name"}, eid + "/")})
-                nodes.append({"id": path, "label": f"{label} ({len(v)})", "children": kids})
+                # A list cannot be read as a whole over RESTCONF (the controller answers "malformed key"):
+                # only its entries can. So the list node itself is not selectable, it just expands.
+                note = "" if kids else " – entries not browsable"
+                nodes.append({"id": path, "label": f"{label} ({len(v)}){note}", "children": kids, "selectable": False})
         return nodes
 
     return build(cfg, "")

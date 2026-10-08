@@ -11,6 +11,7 @@ from . import views
 from .client import RestconfError
 from .confview import MAX_LINES, outline, to_lines
 from .style import BTN
+from .tables import page_column
 
 
 def _lines_html(lines: list[str], needle: str) -> str:
@@ -33,56 +34,58 @@ async def device_config_page(name: str):
     client = views.client
     state = next((d.get("conn-state", "") for d in await client.devices() if d["name"] == name), "")
 
-    with ui.row().classes("w-full items-center gap-3"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props("flat round dense")
-        ui.label(name).classes("text-2xl")
-        ui.html(f'<span class="pill pill-{state if state in ("OPEN", "CLOSED") else "other"}">{escape(state or "?")}</span>')
-        ui.label("Configuration as held by the controller").classes("mut")
-        ui.space()
-        ui.button("Show diff", icon="difference", on_click=lambda: ui.navigate.to(f"/commit?device={quote(name)}")).props(
-            "outline no-caps no-wrap").classes(BTN)
-        ui.button("Reload", icon="refresh", on_click=lambda: ui.navigate.reload()).props("outline no-caps no-wrap").classes(BTN)
+    with page_column():
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props("flat round dense")
+            ui.label(name).classes("text-2xl")
+            ui.html(f'<span class="pill pill-{state if state in ("OPEN", "CLOSED") else "other"}">{escape(state or "?")}</span>')
+            ui.label("Configuration as held by the controller").classes("mut")
+            ui.space()
+            ui.button("Show diff", icon="difference", on_click=lambda: ui.navigate.to(f"/commit?device={quote(name)}")).props(
+                "outline no-caps no-wrap").classes(BTN)
+            ui.button("Reload", icon="refresh", on_click=lambda: ui.navigate.reload()).props("outline no-caps no-wrap").classes(BTN)
 
-    try:
-        cfg = await client.device_outline(name)
-    except RestconfError as e:
-        with ui.card().classes("w-full items-center gap-2 p-8"):
-            ui.icon("power_off", size="lg").classes("mut")
-            ui.label("Cannot read this device's configuration").classes("text-lg")
-            ui.label(str(e)).classes("mut")
-            if state != "OPEN":
-                async def open_it() -> None:
-                    await views.run_tx(client.connection_change(name, "OPEN"), f"Open {name}")
-                    ui.navigate.reload()
-                ui.button("Open device", icon="power", on_click=open_it).props("no-caps no-wrap").classes(BTN)
-        return
-    if not cfg:
-        ui.label("The controller holds no configuration for this device yet. Pull it from the Devices page.").classes("mut")
-        return
-    root = next(iter(cfg))
-    nodes = outline(cfg[root])
-    shown = {"lines": [], "path": ""}
+        try:
+            cfg = await client.device_outline(name)
+        except RestconfError as e:
+            with ui.card().classes("w-full items-center gap-2 p-8"):
+                ui.icon("power_off", size="lg").classes("mut")
+                ui.label("Cannot read this device's configuration").classes("text-lg")
+                ui.label(str(e)).classes("mut")
+                if state != "OPEN":
+                    async def open_it() -> None:
+                        await views.run_tx(client.connection_change(name, "OPEN"), f"Open {name}")
+                        ui.navigate.reload()
+                    ui.button("Open device", icon="power", on_click=open_it).props("no-caps no-wrap").classes(BTN)
+            return
+        if not cfg:
+            ui.label("The controller holds no configuration for this device yet. Pull it from the Devices page.").classes("mut")
+            return
+        root = next(iter(cfg))
+        nodes = outline(cfg[root])
+        shown = {"lines": [], "path": ""}
 
-    with ui.row().classes("w-full no-wrap items-stretch gap-4"):
-        with ui.card().classes("w-80 shrink-0 p-3 gap-2"):
-            ts = ui.input(placeholder="Filter sections…").props("outlined dense clearable").classes("w-full")
-            with ts.add_slot("prepend"):
-                ui.icon("search")
-            with ui.scroll_area().classes("w-full h-[68vh]"):
-                tree = ui.tree(nodes, node_key="id", label_key="label", on_select=lambda e: select(e.value)).props("dense no-connectors")
-            ts.on_value_change(lambda e: (tree.props(f'filter="{(e.value or "").replace(chr(34), "")}"'), tree.update()))
-        with ui.card().classes("grow min-w-0 p-3 gap-2"):
-            with ui.row().classes("w-full items-center gap-2"):
-                crumb = ui.label("Select a section on the left").classes("font-semibold")
-                meta = ui.label().classes("mut text-sm")
-                ui.space()
-                find = ui.input(placeholder="Find in this section…").props("outlined dense clearable").classes("w-64")
-                with find.add_slot("prepend"):
-                    ui.icon("manage_search")
-                ui.button(icon="content_copy", on_click=lambda: (ui.clipboard.write("\n".join(shown["lines"])), ui.notify("Copied"))
-                          ).props("flat round dense").tooltip("Copy section")
-            body = ui.html("").classes("confbody w-full")
-            notice = ui.label().classes("warn-tx text-sm")
+        with ui.row().classes("w-full no-wrap items-stretch gap-4 grow").style("min-height:0"):
+            with ui.card().classes("w-80 shrink-0 p-3 gap-2").style("min-height:0"):
+                ts = ui.input(placeholder="Filter sections…").props("outlined dense clearable").classes("w-full")
+                with ts.add_slot("prepend"):
+                    ui.icon("search")
+                with ui.element("div").classes("w-full grow overflow-auto").style("min-height:0"):
+                    tree = ui.tree(nodes, node_key="id", label_key="label", on_select=lambda e: select(e.value)).props("dense no-connectors")
+                ts.on_value_change(lambda e: (tree.props(f'filter="{(e.value or "").replace(chr(34), "")}"'), tree.update()))
+            with ui.card().classes("grow min-w-0 p-3 gap-2").style("min-height:0"):
+                with ui.row().classes("w-full items-center gap-2"):
+                    crumb = ui.label("Select a section on the left").classes("font-semibold")
+                    meta = ui.label().classes("mut text-sm")
+                    ui.space()
+                    find = ui.input(placeholder="Find in this section…").props("outlined dense clearable").classes("w-64")
+                    with find.add_slot("prepend"):
+                        ui.icon("manage_search")
+                    ui.button(icon="content_copy", on_click=lambda: (ui.clipboard.write("\n".join(shown["lines"])), ui.notify("Copied"))
+                              ).props("flat round dense").tooltip("Copy section")
+                body = ui.html("").classes("confbody w-full grow").style("height:auto;min-height:0")
+                notice = ui.label().classes("warn-tx text-sm")
+
 
     def render() -> None:
         body.set_content(_lines_html(shown["lines"], (find.value or "").strip()))
@@ -102,7 +105,8 @@ async def device_config_page(name: str):
             shown["lines"] = []
             body.set_content("")
             meta.set_text("")
-            notice.set_text(f"Could not read: {e}")
+            notice.set_text("This node is a list: expand it and pick one of its entries." if "malformed key" in str(e)
+                            else f"Could not read: {e}")
             return
         if obj is None:
             shown["lines"] = []

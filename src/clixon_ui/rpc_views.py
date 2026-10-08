@@ -79,7 +79,7 @@ def _show_card(name: str, data, error: str | None) -> None:
             ui.label(error).classes("err-box whitespace-pre-wrap w-full")
             return
         lines, trunc = to_lines(data if data is not None else {})
-        view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=white text-color=grey-8")
+        view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=white text-color=dark")
         text = ui.html(_text_html(lines) or '<div class="cl mut">Empty reply</div>').classes("confbody w-full").style("height:auto;max-height:50vh")
         raw = ui.code(json.dumps(data, indent=2), language="json").classes("w-full")
         text.bind_visibility_from(view, "value", lambda v: v == "text")
@@ -116,7 +116,7 @@ async def rpc_page():
             # ---- 1. what to run
             with ui.card().classes("w-full p-4 gap-3"):
                 kind = ui.toggle({"template": "RPC template", "custom": "Custom RPC"}, value="template").props(
-                    "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=grey-8")
+                    "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=dark")
                 tpl_box = ui.column().classes("w-full gap-3")
                 custom_box = ui.column().classes("w-full gap-2")
                 tpl_box.bind_visibility_from(kind, "value", lambda v: v == "template")
@@ -262,7 +262,7 @@ async def rpc_page():
                  {"name": "description", "label": "Description", "field": "description", "align": "left"},
                  {"name": "args", "label": "Arguments", "field": "args", "align": "left", "classes": "mono"},
                  {"name": "use", "label": "", "field": "name", "align": "right"}],
-                rows, "name", RAIL_RPC, height="calc(100vh - 290px)", virtual=True)
+                rows, "name", RAIL_RPC, height="calc(100vh - var(--header-h) - 242px)", virtual=True)
             avail.bind_filter_from(find, "value")
             avail.add_slot("body-cell-type", '''
                 <q-td :props="props"><span :class="'pill ' + (props.value == 'read' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')

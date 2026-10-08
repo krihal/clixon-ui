@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 
@@ -30,12 +31,9 @@ def frame(active: str) -> None:
     theme.apply()
     folded = app.storage.user.setdefault("folded", False)
 
-    with ui.header().classes("items-center h-12 px-0 gap-2"):
-        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense color=grey-8").classes("nav-burger").tooltip("Fold/unfold menu")
-        ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:30px;display:block"></a>')
-        ui.space()
-        ui.label(client.url).classes("text-sm text-gray-400")
-        ui.label("● connected").classes("text-sm ok-tx")
+    with ui.header().classes("items-center px-0 gap-2"):
+        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense color=dark").classes("nav-burger").tooltip("Fold/unfold menu")
+        ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:36px;display:block"></a>')
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
         "width=250 mini-width=56 behavior=desktop"
@@ -93,6 +91,43 @@ def fmt_ts(ts: str | None) -> str:
         return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().strftime("%H:%M:%S")
     except ValueError:
         return ts
+
+
+async def run_many(label: str, starters: dict) -> dict:
+    """Run one controller RPC per device **concurrently** and wait for all their transactions.
+
+    `starters` maps device name -> zero-argument callable returning the coroutine that starts the RPC
+    (and yields a tid). At most 8 run at once (the controller's web server answers 502 under heavy
+    parallelism). Shows one progress toast and one summary. Returns {device: transaction or error string}."""
+    gate = asyncio.Semaphore(8)
+
+    async def one(name: str, start):
+        async with gate:
+            try:
+                tid = await start()
+                if tid is None:
+                    return name, "no transaction id returned"
+                tr = await client.wait_transaction(int(tid), timeout=180, interval=0.5)
+                return name, tr or "no result"
+            except (RestconfError, TimeoutError) as e:
+                return name, str(e) or type(e).__name__
+
+    n = ui.notification(f"{label}: {len(starters)} device{'s' if len(starters) != 1 else ''} in parallel…",
+                        spinner=True, timeout=None)
+    try:
+        done = dict(await asyncio.gather(*(one(name, st) for name, st in starters.items())))
+    finally:
+        n.dismiss()
+    bad = {name: (r if isinstance(r, str) else (r.get("reason") or r.get("result") or "failed").strip())
+           for name, r in done.items() if isinstance(r, str) or r.get("result") != "SUCCESS"}
+    ok = len(done) - len(bad)
+    if not bad:
+        ui.notify(f"{label}: {ok} of {len(done)} succeeded", type="positive")
+    else:
+        ui.notify(f"{label}: {ok} of {len(done)} succeeded, {len(bad)} failed\n" +
+                  "\n".join(f"• {name}: {why[:160]}" for name, why in sorted(bad.items())),
+                  type="negative", multi_line=True, close_button=True, timeout=0)
+    return done
 
 
 async def run_tx(coro_tid, label: str):
@@ -164,11 +199,10 @@ async def devices_page():
         if not names:
             ui.notify("Select devices first", type="warning")
             return
-        for name in names:
-            if kind == "pull":
-                await run_tx(client.config_pull(name), f"Pull {name}")
-            else:
-                await run_tx(client.connection_change(name, kind.upper()), f"{kind.title()} {name}")
+        label = "Pull" if kind == "pull" else kind.title()
+        starters = {name: (lambda name=name: client.config_pull(name)) if kind == "pull"
+                    else (lambda name=name: client.connection_change(name, kind.upper())) for name in names}
+        await run_many(label, starters)
         await refresh()
 
     with page_column():
@@ -228,7 +262,7 @@ async def commit_page(device: str = ""):
     with ui.card().classes("w-full p-4 gap-3"):
         with ui.row().classes("w-full items-center gap-4"):
             mode = ui.toggle(MODES, value="dev" if device else "changes").props(
-                "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=grey-8")
+                "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=dark")
             ui.space()
             ui.button("Show diff", icon="difference", on_click=lambda: show()).props("no-caps no-wrap").classes(BTN)
         help_ = ui.label().classes("text-sm mut")
