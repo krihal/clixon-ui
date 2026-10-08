@@ -6,12 +6,12 @@ import asyncio
 import json
 from html import escape
 
-from nicegui import ui
+from nicegui import app, ui
 
 from . import views
 from .client import RestconfError
 from .confview import to_lines
-from .rpcutil import is_read_only, rpc_name, substitute, template_vars
+from .rpcutil import cli_request, is_read_only, rpc_name, substitute, template_vars
 from .rpcschema import RpcIndex
 from .style import BTN
 from .tables import RAIL_RPC, data_table
@@ -25,6 +25,67 @@ CUSTOM_EXAMPLE = '''{
 
 def _text_html(lines: list[str]) -> str:
     return "".join(f'<div class="cl"><span class="ln">{i}</span>{escape(ln)}</div>' for i, ln in enumerate(lines, 1))
+
+
+async def run_on_targets(client, req: dict, devs: list[str], grps: list[str]) -> list[tuple[str, dict]]:
+    """Run one RPC (template or inline) on devices/groups, at most 4 at a time; returns (label, result) pairs."""
+    jobs = [(d, {"device": d}) for d in devs] + [(f"group {g}", {"group": g}) for g in grps]
+    gate = asyncio.Semaphore(4)  # the controller's web server answers 502 under heavy parallelism
+
+    async def job(label: str, tgt: dict) -> tuple[str, dict]:
+        async with gate:
+            try:
+                tid = await client.run_rpc(template=req.get("template"), inline=req.get("inline"),
+                                           variables=req.get("variables"), **tgt)
+                tr = await client.wait_transaction(tid, timeout=120, interval=0.5)
+                if not tr or tr.get("result") != "SUCCESS":
+                    return label, {"error": (tr or {}).get("reason", "failed").strip() or "failed", "tid": tid}
+                return label, {"tid": tid, "replies": await client.rpc_result(tid), "tr": tr}
+            except (RestconfError, TimeoutError) as e:
+                return label, {"error": str(e)}
+
+    return list(await asyncio.gather(*(job(lbl, t) for lbl, t in jobs)))
+
+
+def _show_results(done: list[tuple[str, dict]]) -> None:
+    for label, res in done:
+        if "error" in res:
+            _show_card(label, None, res["error"])
+            continue
+        for dev, data in (res["replies"] or {}).items() or [(label, None)]:
+            _show_card(dev, data, None)
+
+
+async def _confirm_run(req: dict, devs: list[str], grps: list[str]) -> bool:
+    """Confirm dialog for RPCs that are not read-only. Returns True to go ahead."""
+    with ui.dialog() as d, ui.card().classes("w-[520px] gap-2"):
+        ui.label(f"Run {req['label']}?").classes("text-lg")
+        ui.label("This is not a read-only command and can change the device state.").classes("warn-tx")
+        ui.code(json.dumps(req["body"], indent=2), language="json").classes("w-full")
+        ui.label("Targets: " + ", ".join(devs + [f"group {g}" for g in grps])).classes("text-sm")
+        with ui.row().classes("justify-end w-full"):
+            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Run", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
+    return bool(await d)
+
+
+def _show_card(name: str, data, error: str | None) -> None:
+    with ui.expansion(value=True).classes("w-full border border-[#e3e8ee] line rounded-lg").props("dense expand-separator") as ex:
+        with ex.add_slot("header"):
+            with ui.row().classes("items-center gap-2 w-full"):
+                ui.icon("error" if error else "check_circle", color="negative" if error else "positive", size="sm")
+                ui.label(name).classes("font-medium")
+        if error:
+            ui.label(error).classes("err-box whitespace-pre-wrap w-full")
+            return
+        lines, trunc = to_lines(data if data is not None else {})
+        view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=white text-color=grey-8")
+        text = ui.html(_text_html(lines) or '<div class="cl mut">Empty reply</div>').classes("confbody w-full").style("height:auto;max-height:50vh")
+        raw = ui.code(json.dumps(data, indent=2), language="json").classes("w-full")
+        text.bind_visibility_from(view, "value", lambda v: v == "text")
+        raw.bind_visibility_from(view, "value", lambda v: v == "json")
+        if trunc:
+            ui.label("Output truncated in the text view; see JSON.").classes("warn-tx text-sm")
 
 
 @ui.page("/rpc", response_timeout=60)
@@ -49,6 +110,7 @@ async def rpc_page():
     with ui.tabs().classes("mb-2") as tabs:
         run_tab = ui.tab("Run an RPC").props("no-caps")
         avail_tab = ui.tab("Available RPCs").props("no-caps")
+        cli_tab = ui.tab("CLI").props("no-caps")
     with ui.tab_panels(tabs, value=run_tab).classes("w-full bg-transparent").props("animated=false"):
         with ui.tab_panel(run_tab).classes("p-0 gap-4"):
             # ---- 1. what to run
@@ -159,17 +221,8 @@ async def rpc_page():
                 if not devs and not grps:
                     ui.notify("Choose at least one device or group", type="warning")
                     return
-                if not req["read_only"]:
-                    with ui.dialog() as d, ui.card().classes("w-[520px] gap-2"):
-                        ui.label(f"Run {req['label']}?").classes("text-lg")
-                        ui.label("This RPC is not read-only and can change the device state.").classes("warn-tx")
-                        ui.code(json.dumps(req["body"], indent=2), language="json").classes("w-full")
-                        ui.label("Targets: " + ", ".join(devs + [f"group {g}" for g in grps])).classes("text-sm")
-                        with ui.row().classes("justify-end w-full"):
-                            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-                            ui.button("Run RPC", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
-                    if not await d:
-                        return
+                if not req["read_only"] and not await _confirm_run(req, devs, grps):
+                    return
                 await execute(req, devs, grps)
 
             async def execute(req: dict, devs: list[str], grps: list[str]) -> None:
@@ -177,53 +230,12 @@ async def rpc_page():
                 prog.set_visibility(True)
                 stage.set_text(f"Running {req['label']}…")
                 results.clear()
-                jobs = [(d, {"device": d}) for d in devs] + [(f"group {g}", {"group": g}) for g in grps]
-
-                async def job(label: str, tgt: dict) -> tuple[str, dict]:
-                    try:
-                        tid = await client.run_rpc(template=req.get("template"), inline=req.get("inline"),
-                                                   variables=req.get("variables"), **tgt)
-                        tr = await client.wait_transaction(tid, timeout=120, interval=0.5)
-                        if not tr or tr.get("result") != "SUCCESS":
-                            return label, {"error": (tr or {}).get("reason", "failed").strip() or "failed", "tid": tid}
-                        return label, {"tid": tid, "replies": await client.rpc_result(tid), "tr": tr}
-                    except (RestconfError, TimeoutError) as e:
-                        return label, {"error": str(e)}
-
-                gate = asyncio.Semaphore(4)
-
-                async def limited(lbl: str, t: dict) -> tuple[str, dict]:
-                    async with gate:
-                        return await job(lbl, t)
-
-                done = await asyncio.gather(*(limited(lbl, t) for lbl, t in jobs))
+                done = await run_on_targets(client, req, devs, grps)
                 prog.set_visibility(False)
                 run_btn.set_enabled(True)
                 with results:
-                    for label, res in done:
-                        if "error" in res:
-                            show_card(label, None, res["error"])
-                            continue
-                        for dev, data in (res["replies"] or {}).items() or [(label, None)]:
-                            show_card(dev, data, None)
+                    _show_results(done)
 
-            def show_card(name: str, data, error: str | None) -> None:
-                with ui.expansion(value=True).classes("w-full border border-[#e3e8ee] line rounded-lg").props("dense expand-separator") as ex:
-                    with ex.add_slot("header"):
-                        with ui.row().classes("items-center gap-2 w-full"):
-                            ui.icon("error" if error else "check_circle", color="negative" if error else "positive", size="sm")
-                            ui.label(name).classes("font-medium")
-                    if error:
-                        ui.label(error).classes("err-box whitespace-pre-wrap w-full")
-                        return
-                    lines, trunc = to_lines(data if data is not None else {})
-                    view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=white text-color=grey-8")
-                    text = ui.html(_text_html(lines) or '<div class="cl mut">Empty reply</div>').classes("confbody w-full").style("height:auto;max-height:50vh")
-                    raw = ui.code(json.dumps(data, indent=2), language="json").classes("w-full")
-                    text.bind_visibility_from(view, "value", lambda v: v == "text")
-                    raw.bind_visibility_from(view, "value", lambda v: v == "json")
-                    if trunc:
-                        ui.label("Output truncated in the text view; see JSON.").classes("warn-tx text-sm")
 
         with ui.tab_panel(avail_tab).classes("p-0 gap-3"):
             index = _index(client)
@@ -292,6 +304,66 @@ async def rpc_page():
 
             dev_pick.on_value_change(lambda e: load(False))
             ui.timer(0.1, lambda: load(False), once=True)
+
+
+        with ui.tab_panel(cli_tab).classes("p-0 gap-3"):
+            ui.label("Run an operational command as you would type it in the device's CLI (Junos). "
+                     "The reply comes back as structured data. Only plain “show” commands run without asking; "
+                     "anything else (request, clear, restart, ping, …) needs confirmation.").classes("mut text-sm max-w-3xl")
+            with ui.card().classes("w-full p-4 gap-3"):
+                with ui.row().classes("w-full items-start gap-3 no-wrap"):
+                    cli_devs = ui.select(all_devs, label="Devices", multiple=True, with_input=True, value=[]
+                                         ).props("use-chips outlined dense").classes("w-80")
+                    cli_groups = ui.select(groups, label="Groups", multiple=True, with_input=True, value=[]
+                                           ).props("use-chips outlined dense").classes("w-48")
+                    cmd = ui.input(placeholder="show version").props("outlined dense clearable autofocus").classes("grow font-mono")
+                    with cmd.add_slot("prepend"):
+                        ui.icon("chevron_right")
+                    cli_run = ui.button("Run", icon="play_arrow", on_click=lambda: run_cli()).props("no-caps no-wrap").classes(BTN)
+                recent = ui.row().classes("items-center gap-2")
+            cli_prog = ui.row().classes("items-center gap-2")
+            with cli_prog:
+                ui.spinner(size="sm")
+                cli_stage = ui.label().classes("mut")
+            cli_prog.set_visibility(False)
+            cli_results = ui.column().classes("w-full gap-2")
+
+            def draw_recent() -> None:
+                recent.clear()
+                hist = app.storage.user.get("cli_history", [])
+                with recent:
+                    if hist:
+                        ui.label("Recent").classes("mut text-sm")
+                    for c in hist:
+                        ui.chip(c, on_click=lambda c=c: cmd.set_value(c)).props("outline dense clickable").classes("font-mono")
+
+            async def run_cli() -> None:
+                text = (cmd.value or "").strip()
+                devs, grps = list(cli_devs.value), list(cli_groups.value)
+                if not text:
+                    ui.notify("Type a command first", type="warning")
+                    return
+                if not devs and not grps:
+                    ui.notify("Choose at least one device or group", type="warning")
+                    return
+                req = cli_request(text)
+                if not req["read_only"] and not await _confirm_run(req, devs, grps):
+                    return
+                hist = [text] + [c for c in app.storage.user.get("cli_history", []) if c != text]
+                app.storage.user["cli_history"] = hist[:10]
+                draw_recent()
+                cli_run.set_enabled(False)
+                cli_prog.set_visibility(True)
+                cli_stage.set_text(f"Running “{text}”…")
+                cli_results.clear()
+                done = await run_on_targets(client, req, devs, grps)
+                cli_prog.set_visibility(False)
+                cli_run.set_enabled(True)
+                with cli_results:
+                    _show_results(done)
+
+            cmd.on("keydown.enter", lambda: run_cli())
+            draw_recent()
 
 
 _INDEX: dict = {}

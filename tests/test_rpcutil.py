@@ -1,4 +1,4 @@
-from clixon_ui.rpcutil import is_read_only, rpc_name, substitute, template_vars
+from clixon_ui.rpcutil import cli_request, is_read_only, is_read_only_cli, rpc_name, substitute, template_vars
 
 
 def test_vars_declared_and_undeclared():
@@ -17,3 +17,14 @@ def test_substitute_preview():
     cfg = {"get-interface-information": {"interface-name": "${interface}", "extensive": {}}}
     assert substitute(cfg, {"interface": "et-0/0/10"})["get-interface-information"]["interface-name"] == "et-0/0/10"
     assert substitute(cfg, {})["get-interface-information"]["interface-name"] == "${interface}"
+
+
+def test_cli_read_only_detection():
+    assert is_read_only_cli("show version") and is_read_only_cli("  SHOW interfaces terse | match ge-")
+    assert not is_read_only_cli("request system reboot") and not is_read_only_cli("clear bgp neighbor")
+    assert not is_read_only_cli("show configuration | save /tmp/x") and not is_read_only_cli("ping 1.1.1.1") and not is_read_only_cli("")
+
+
+def test_cli_request_shape():
+    r = cli_request("  show version ")
+    assert r["inline"] == {"command": "show version"} and r["read_only"] and r["label"] == "show version"

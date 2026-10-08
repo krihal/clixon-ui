@@ -36,3 +36,20 @@ def substitute(config: dict, values: dict[str, str]) -> dict:
     """Preview of the RPC with variables filled in (the controller does the real substitution)."""
     text = json.dumps(config)
     return json.loads(_VAR.sub(lambda m: json.dumps(values.get(m.group(1)) or m.group(0))[1:-1], text))
+
+
+def is_read_only_cli(command: str) -> bool:
+    """A CLI command is treated as read-only only if it is a plain `show ...` without a pipe that
+    writes somewhere (`| save`, `| tee`...). Everything else asks for confirmation."""
+    words = command.strip().lower().split()
+    if not words or words[0] != "show":
+        return False
+    pipes = [part.strip().split()[0] for part in command.lower().split("|")[1:] if part.strip()]
+    return not any(p in ("save", "tee", "request") for p in pipes)
+
+
+def cli_request(command: str) -> dict:
+    """RPC request for a CLI command, in the shape rpc_views' runner expects (Junos `<command>` element)."""
+    command = command.strip()
+    return {"inline": {"command": command}, "label": command, "read_only": is_read_only_cli(command),
+            "body": {"command": command}}
