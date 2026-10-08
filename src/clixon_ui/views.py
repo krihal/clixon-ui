@@ -15,13 +15,21 @@ from .client import ClixonClient, RestconfError
 
 client: ClixonClient  # set by __init__.main()
 
-MENU = [  # (route, label, material icon); /restconf (raw console) is deliberately not listed
-    ("/", "Devices", "dns"),
-    ("/services", "Services", "hub"),
-    ("/network", "Network", "lan"),
-    ("/commit", "Diff / Commit", "difference"),
-    ("/transactions", "Transactions", "receipt_long"),
-    ("/rpc", "RPC", "terminal"),
+# Menu sections: (heading, [(route, label, material icon), ...]). Grouped by what the pages are for.
+# /restconf (raw console) is deliberately not listed.
+MENU = [
+    ("Inventory", [
+        ("/", "Devices", "dns"),
+        ("/network", "Network", "lan"),
+    ]),
+    ("Configuration", [
+        ("/services", "Services", "hub"),
+        ("/commit", "Diff / Commit", "difference"),
+    ]),
+    ("Operations", [
+        ("/rpc", "RPC", "terminal"),
+        ("/transactions", "Transactions", "receipt_long"),
+    ]),
 ]
 POLL_SECONDS = 5  # refresh interval for the Devices and Transactions pages
 STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
@@ -40,6 +48,8 @@ def frame(active: str) -> None:
         "width=250 mini-width=56 behavior=desktop"
     ).classes("p-0")
     labels: list[ui.item_section] = []
+    headings: list = []  # section headings: visible when the menu is expanded
+    dividers: list = []  # thin lines between sections: visible instead of the headings when folded
 
     def toggle() -> None:
         app.storage.user["folded"] = not app.storage.user["folded"]
@@ -53,22 +63,30 @@ def frame(active: str) -> None:
             drawer.props(remove="mini")
         for lab in labels:
             lab.set_visibility(not f)
+        for h in headings:
+            h.set_visibility(not f)
+        for d in dividers:
+            d.set_visibility(f)
 
     with drawer:
         with ui.list().props("dense").classes("w-full pt-2"):
-            for route, label, icon in MENU:
-                item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props(
-                    "clickable" + (" active" if route == active else "")
-                ).classes("w-full")
-                with item:
-                    with ui.item_section().props("avatar").classes("min-w-0"):
-                        ui.icon(icon)
-                    sec = ui.item_section()
-                    with sec:
-                        ui.item_label(label)
-                    labels.append(sec)
-                    with ui.tooltip(label).props("anchor='center right' self='center left'"):
-                        pass
+            for gi, (heading, entries) in enumerate(MENU):
+                if gi:
+                    dividers.append(ui.separator().classes("menu-divider"))
+                headings.append(ui.label(heading).classes("menu-heading"))
+                for route, label, icon in entries:
+                    item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props(
+                        "clickable" + (" active" if route == active else "")
+                    ).classes("w-full")
+                    with item:
+                        with ui.item_section().props("avatar").classes("min-w-0"):
+                            ui.icon(icon)
+                        sec = ui.item_section()
+                        with sec:
+                            ui.item_label(label)
+                        labels.append(sec)
+                        with ui.tooltip(label).props("anchor='center right' self='center left'"):
+                            pass
     apply()
 
 

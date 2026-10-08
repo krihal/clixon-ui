@@ -47,6 +47,8 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .row-actions .q-btn.act-del:hover{color:var(--err)!important;background:var(--err-bg)}
 
 /* menu */
+.menu-heading{font-size:12px;font-weight:700;color:var(--mut);padding:16px 17px 4px;letter-spacing:.01em}
+.menu-divider{margin:8px 12px;background:var(--line)}
 .q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:17px;padding-right:0}
 /* icon column: every icon (menu button included) is centred on x=28, expanded or folded (mini width 56) */
 .q-drawer .q-item__section--avatar{min-width:0!important;width:22px;padding-right:0}
