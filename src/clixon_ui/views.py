@@ -9,6 +9,7 @@ from nicegui import app, ui
 
 from . import diffview, theme
 from .style import BTN, BTN_TOOLBAR
+from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
 from .client import ClixonClient, RestconfError
 
 client: ClixonClient  # set by __init__.main()
@@ -20,6 +21,7 @@ MENU = [  # (route, label, material icon); /restconf (raw console) is deliberate
     ("/transactions", "Transactions", "receipt_long"),
     ("/rpc", "RPC", "terminal"),
 ]
+POLL_SECONDS = 5  # refresh interval for the Devices and Transactions pages
 STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 
 
@@ -28,15 +30,15 @@ def frame(active: str) -> None:
     theme.apply()
     folded = app.storage.user.setdefault("folded", False)
 
-    with ui.header().classes("items-center h-12 px-2"):
-        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense color=grey-8").tooltip("Fold/unfold menu")
+    with ui.header().classes("items-center h-12 px-0 gap-2"):
+        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense color=grey-8").classes("nav-burger").tooltip("Fold/unfold menu")
         ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:30px;display:block"></a>')
         ui.space()
         ui.label(client.url).classes("text-sm text-gray-400")
         ui.label("● connected").classes("text-sm ok-tx")
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
-        "width=250 mini-width=60 behavior=desktop"
+        "width=250 mini-width=56 behavior=desktop"
     ).classes("p-0")
     labels: list[ui.item_section] = []
 
@@ -114,40 +116,26 @@ async def devices_page():
     frame("/")
     selected: set[str] = set()
     rows: list[dict] = []
-
-    @ui.refreshable
-    def table():
-        with ui.card().classes("w-full p-0"):
-            t = ui.table(
-                columns=[
-                    {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
-                    {"name": "state", "label": "State", "field": "conn-state", "align": "left"},
-                    {"name": "since", "label": "Since", "field": "since", "align": "left", "classes": "mono"},
-                    {"name": "sync", "label": "Last sync", "field": "sync", "align": "left", "classes": "mono"},
-                    {"name": "framing", "label": "Framing", "field": "netconf-framing-type", "align": "left", "classes": "mono"},
-                    {"name": "menu", "label": "", "field": "name", "align": "right"},
-                ],
-                rows=rows, row_key="name", selection="multiple",
-                on_select=lambda e: (selected.clear(), selected.update(r["name"] for r in e.selection)),
-            ).classes("w-full")
-            t.selected = [r for r in rows if r["name"] in selected]
-            # coloured rail on the left edge of each row = connection state
-            t.props(""":table-row-class-fn="row => 'st-' + row['conn-state']" """)
-            t.add_slot("body-cell-menu", '''
-                <q-td :props="props"><q-btn flat dense round icon="more_horiz" color="grey">
-                  <q-menu auto-close><q-list dense style="min-width:150px">
-                    <q-item clickable @click="$parent.$emit('act', {kind:'open', name:props.row.name})"><q-item-section>Open</q-item-section></q-item>
-                    <q-item clickable @click="$parent.$emit('act', {kind:'close', name:props.row.name})"><q-item-section>Close</q-item-section></q-item>
-                    <q-item clickable @click="$parent.$emit('act', {kind:'reconnect', name:props.row.name})"><q-item-section>Reconnect</q-item-section></q-item>
-                    <q-item clickable @click="$parent.$emit('act', {kind:'pull', name:props.row.name})"><q-item-section>Pull (sync)</q-item-section></q-item>
-                    <q-item clickable @click="$parent.$emit('act', {kind:'config', name:props.row.name})"><q-item-section>Show configuration</q-item-section></q-item>
-                    <q-item clickable @click="$parent.$emit('act', {kind:'diff', name:props.row.name})"><q-item-section>Show diff</q-item-section></q-item>
-                  </q-list></q-menu></q-btn></q-td>''')
-            t.on("act", lambda e: row_action(e.args["kind"], e.args["name"]))
-            t.on("rowDblclick", lambda e: ui.navigate.to(f"/devices/{e.args[1]['name']}"))
-            t.bind_filter_from(search, "value")
-            t.add_slot("body-cell-state", '''
-                <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'?props.value:'other')">{{props.value}}</span></q-td>''')
+    columns = [
+        {"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
+        {"name": "state", "label": "State", "field": "conn-state", "align": "left"},
+        {"name": "since", "label": "Since", "field": "since", "align": "left", "classes": "mono"},
+        {"name": "sync", "label": "Last sync", "field": "sync", "align": "left", "classes": "mono"},
+        {"name": "framing", "label": "Framing", "field": "netconf-framing-type", "align": "left", "classes": "mono"},
+        {"name": "menu", "label": "", "field": "name", "align": "right"},
+    ]
+    row_menu = '''
+        <q-td :props="props"><q-btn flat dense round icon="more_horiz" color="grey">
+          <q-menu auto-close><q-list dense style="min-width:150px">
+            <q-item clickable @click="$parent.$emit('act', {kind:'open', name:props.row.name})"><q-item-section>Open</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'close', name:props.row.name})"><q-item-section>Close</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'reconnect', name:props.row.name})"><q-item-section>Reconnect</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'pull', name:props.row.name})"><q-item-section>Pull (sync)</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'config', name:props.row.name})"><q-item-section>Show configuration</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'diff', name:props.row.name})"><q-item-section>Show diff</q-item-section></q-item>
+          </q-list></q-menu></q-btn></q-td>'''
+    state_cell = '''
+        <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'?props.value:'other')">{{props.value}}</span></q-td>'''
 
     async def refresh():
         try:
@@ -155,9 +143,13 @@ async def devices_page():
         except RestconfError as e:
             ui.notify(str(e), type="negative")
             return
-        rows[:] = [{**d, "since": fmt_ts(d.get("conn-state-timestamp")), "sync": fmt_ts(d.get("sync-timestamp"))} for d in devs]
-        summary.set_text(f"{len(rows)} total · {sum(r['conn-state'] == 'OPEN' for r in rows)} open")
-        table.refresh()
+        new = [{**d, "since": fmt_ts(d.get("conn-state-timestamp")), "sync": fmt_ts(d.get("sync-timestamp"))} for d in devs]
+        summary.set_text(f"{len(new)} total · {sum(r['conn-state'] == 'OPEN' for r in new)} open")
+        if new != rows:  # only touch the table when something changed, so scroll position survives polling
+            rows[:] = new
+            tbl.rows = rows
+            tbl.selected = [r for r in rows if r["name"] in selected]
+            tbl.update()
 
     async def row_action(kind: str, name: str):
         if kind == "config":
@@ -179,22 +171,30 @@ async def devices_page():
                 await run_tx(client.connection_change(name, kind.upper()), f"{kind.title()} {name}")
         await refresh()
 
-    with ui.row().classes("w-full items-center gap-3"):
-        ui.label("Devices").classes("text-2xl")
-        summary = ui.label().classes("mut")
-    with ui.row().classes("w-full items-center gap-3"):
-        ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        ui.button("Pull (sync)", icon="cloud_download", on_click=lambda: act("pull")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        ui.button("Diff selected", icon="difference",
-                  on_click=lambda: ui.navigate.to(f"/commit?device={','.join(sorted(selected))}")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        search = ui.input(placeholder="Search devices…").props("outlined dense clearable").classes("grow min-w-52")
-        with search.add_slot("prepend"):
-            ui.icon("search")
-    table()
+    with page_column():
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.label("Devices").classes("text-2xl")
+            summary = ui.label().classes("mut")
+        with ui.row().classes("w-full items-center gap-3"):
+            ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            ui.button("Pull (sync)", icon="cloud_download", on_click=lambda: act("pull")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            ui.button("Diff selected", icon="difference",
+                      on_click=lambda: ui.navigate.to(f"/commit?device={','.join(sorted(selected))}")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            search = ui.input(placeholder="Search devices…").props("outlined dense clearable").classes("grow min-w-52")
+            with search.add_slot("prepend"):
+                ui.icon("search")
+        tbl = data_table(columns, rows, "name", RAIL_DEVICE, selection="multiple",
+                         on_select=lambda e: (selected.clear(), selected.update(r["name"] for r in e.selection)))
+        tbl.add_slot("body-cell-menu", row_menu)
+        tbl.add_slot("body-cell-state", state_cell)
+        tbl.on("act", lambda e: row_action(e.args["kind"], e.args["name"]))
+        tbl.on("rowDblclick", lambda e: ui.navigate.to(f"/devices/{e.args[1]['name']}"))
+        tbl.bind_filter_from(search, "value")
+
     await refresh()
-    ui.timer(3.0, refresh)
+    ui.timer(POLL_SECONDS, refresh)
 
 
 MODES = {
@@ -437,33 +437,43 @@ def transaction_dialog(tr: dict) -> None:
 @ui.page("/transactions")
 async def transactions_page():
     frame("/transactions")
-    ui.label("Transactions").classes("text-2xl")
-    ui.label("Click a transaction for details.").classes("text-gray-400")
-    holder = ui.element("div")  # dialogs live here so the periodic table refresh doesn't destroy them
+    with page_column():
+        ui.label("Transactions").classes("text-2xl")
+        ui.label("Click a transaction for details.").classes("mut")
+        holder = ui.element("div")  # dialogs live here so the periodic table refresh doesn't destroy them
 
-    async def show(tid) -> None:
-        tr = await client.transaction(tid)
-        if tr is None:
-            ui.notify(f"Transaction {tid} not found", type="warning")
-            return
-        with holder:
-            transaction_dialog(tr)
+        async def show(tid) -> None:
+            tr = await client.transaction(tid)
+            if tr is None:
+                ui.notify(f"Transaction {tid} not found", type="warning")
+                return
+            with holder:
+                transaction_dialog(tr)
 
-    @ui.refreshable
-    async def table():
-        trs = list(reversed(await client.transactions()))[:100]
-        t = ui.table(
-            columns=[{"name": k, "label": k.title(), "field": k, "align": "left",
-                      **({"classes": "mono"} if k in ("tid", "time", "dur") else {})}
-                     for k in ("tid", "description", "state", "result", "username", "time", "dur")],
-            rows=[{**t, "time": fmt_ts(t.get("timestamp")), "dur": duration(t)} for t in trs], row_key="tid",
-        ).classes("w-full cursor-pointer")
+        rows: list[dict] = []
+        t = data_table(
+            [{"name": k, "label": k.title(), "field": k, "align": "left",
+              **({"classes": "mono"} if k in ("tid", "time", "dur") else {})}
+             for k in ("tid", "description", "state", "result", "username", "time", "dur")],
+            rows, "tid", RAIL_TRANSACTION)
         t.add_slot("body-cell-result", '''
             <q-td :props="props"><span v-if="props.value" :class="'pill pill-' + (props.value=='SUCCESS'?'OPEN':props.value=='FAILED'||props.value=='ERROR'?'CLOSED':'other')">{{props.value}}</span></q-td>''')
         t.on("rowClick", lambda e: show(e.args[1]["tid"]))
 
-    await table()
-    ui.timer(5.0, table.refresh)
+        async def refresh() -> None:
+            """Poll, but only touch the table when something changed so scroll position and page survive."""
+            try:
+                trs = list(reversed(await client.transactions()))[:200]
+            except RestconfError:
+                return
+            new = [{**x, "time": fmt_ts(x.get("timestamp")), "dur": duration(x)} for x in trs]
+            if new != rows:
+                rows[:] = new
+                t.rows = rows
+                t.update()
+
+    await refresh()
+    ui.timer(POLL_SECONDS, refresh)
 
 
 @ui.page("/restconf")

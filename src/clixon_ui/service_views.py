@@ -12,6 +12,7 @@ from .client import RestconfError
 from .formdata import Lookup, entry_from_json, service_to_json, validate
 from .forms import render_children
 from .style import BTN
+from .tables import RAIL_SERVICE, data_table, page_column
 from .schema import Node, Schema, load_schema
 
 _schema_task: asyncio.Task | None = None
@@ -166,43 +167,50 @@ async def service_type_page(qname: str):
         ui.label(f"Unknown service type {qname}").classes("text-negative")
         return
     services = await views.guarded(views.client.candidate_services()) or {}
-    rows = [{"key": str(e.get("service-name", "")), "desc": str(e.get("description", ""))} for e in _instances(svc, services)]
+    rows = [{"key": str(e.get("service-name", "")), "desc": str(e.get("description", "")),
+             "status": "Deployed" if e.get("created") else "Not deployed"} for e in _instances(svc, services)]
     rows.sort(key=lambda r: r["key"])
 
-    with ui.row().classes("w-full items-center"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/services")).props("flat round dense")
-        ui.label(svc.name).classes("text-2xl")
-        ui.label(f"{len(rows)} instances").classes("text-gray-400")
-        ui.space()
-        flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("w-56")
-        ui.button("Commit diff", icon="preview",
-                  on_click=lambda: commit_diff_dialog(
-                      "Device diff for changed services", "Running all services whose configuration has changed in candidate")).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
-            "Run service actions on the candidate and show the device diff. Nothing is pushed.")
-        ui.button(f"New {svc.name}", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")).props("dense no-caps no-wrap").classes(BTN)
+    with page_column():
+        with ui.row().classes("w-full items-center"):
+            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/services")).props("flat round dense")
+            ui.label(svc.name).classes("text-2xl")
+            ui.label(f"{len(rows)} instances").classes("mut")
+            ui.space()
+            flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("w-56")
+            ui.button("Commit diff", icon="preview",
+                      on_click=lambda: commit_diff_dialog(
+                          "Device diff for changed services", "Running all services whose configuration has changed in candidate")
+                      ).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
+                "Run service actions on the candidate and show the device diff. Nothing is pushed.")
+            ui.button(f"New {svc.name}", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
+                      ).props("dense no-caps no-wrap").classes(BTN)
 
-    table = ui.table(
-        columns=[{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True},
-                 {"name": "desc", "label": "Description", "field": "desc", "align": "left"},
-                 {"name": "act", "label": "", "field": "key", "align": "right"}],
-        rows=rows, row_key="key", pagination=25,
-    ).classes("w-full")
-    table.bind_filter_from(flt, "value")
-    table.add_slot("body-cell-act", """
-        <q-td :props="props">
-          <q-btn flat dense round icon="preview" @click="$parent.$emit('diff', props.row.key)"><q-tooltip>Preview device diff (no changes)</q-tooltip></q-btn>
-          <q-btn flat dense round icon="edit" @click="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
-          <q-btn flat dense round icon="delete" color="negative" @click="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
-        </q-td>""")
-    table.on("diff", lambda e: commit_diff_dialog(
-        f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
-        views.client.service_instance(svc.name, svc.keys[0], e.args)))
-    table.on("edit", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args, safe='')}"))
+        table = data_table(
+            [{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True, "classes": "name"},
+             {"name": "desc", "label": "Description", "field": "desc", "align": "left"},
+             {"name": "status", "label": "Status", "field": "status", "align": "left"},
+             {"name": "act", "label": "", "field": "key", "align": "right"}],
+            rows, "key", RAIL_SERVICE)
+        table.bind_filter_from(flt, "value")
+        table.add_slot("body-cell-status", '''
+            <q-td :props="props"><span :class="'pill ' + (props.value == 'Deployed' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
+        table.add_slot("body-cell-act", """
+            <q-td :props="props">
+              <q-btn flat dense round icon="preview" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Preview device diff (no changes)</q-tooltip></q-btn>
+              <q-btn flat dense round icon="edit" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
+              <q-btn flat dense round icon="delete" color="negative" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
+            </q-td>""")
+        table.on("diff", lambda e: commit_diff_dialog(
+            f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
+            views.client.service_instance(svc.name, svc.keys[0], e.args)))
+        table.on("edit", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args, safe='')}"))
+        table.on("rowClick", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args[1]['key'], safe='')}"))
 
     async def delete(key: str) -> None:
         with ui.dialog() as d, ui.card():
             ui.label(f"Delete {svc.name} '{key}' from the candidate datastore?").classes("text-lg")
-            ui.label("Takes effect on devices only after you deploy (Diff / Commit).").classes("text-gray-400")
+            ui.label("Takes effect on devices only after you deploy (Diff / Commit).").classes("mut")
             with ui.row():
                 ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
                 ui.button("Delete", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)

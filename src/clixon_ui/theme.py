@@ -37,7 +37,12 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer--bordered,.q-drawer--left.q-drawer--bordered{border:0!important}
 
 /* menu */
-.q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:16px}
+.q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:17px;padding-right:0}
+/* icon column: every icon (menu button included) is centred on x=28, expanded or folded (mini width 56) */
+.q-drawer .q-item__section--avatar{min-width:0!important;width:22px;padding-right:0}
+.q-drawer .q-item__section--main{margin-left:17px}
+.q-drawer--mini .q-item{padding-left:0!important;justify-content:center}
+.q-header .nav-burger{margin-left:10px;width:36px;height:36px;min-height:0}
 .q-drawer .q-item .q-icon{font-size:22px;color:var(--nav-tx)}
 .q-drawer .q-item:hover{background:var(--hover)}
 /* selected item is a tab: same colour as the page, full width, merges into the page edge */
@@ -73,6 +78,11 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-table tbody td.name{font-weight:600}
 .q-table__bottom{color:var(--mut);border-color:var(--line)!important}
 
+/* tables that scroll inside a fixed-height card: header stays visible */
+.sticky-head.q-table--flat,.sticky-head{display:flex;flex-direction:column}
+.sticky-head .q-table__middle{flex:1;min-height:0}
+.sticky-head thead tr th{position:sticky;z-index:1;top:0;background:var(--panel)}
+
 /* form fields */
 .q-field--outlined .q-field__control{background:#fff;border-radius:var(--r-s)}
 .q-field--outlined .q-field__control:before{border-color:var(--line-2)}
@@ -81,11 +91,12 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-field--readonly .q-field__control{background:#f4f6f8}
 .q-field--readonly .q-field__control:before{border-style:dashed}
 
-/* device rows: status rail */
+/* status rail on the left edge of every data-table row + uniform row height */
+.q-table tbody td{height:52px;padding-top:0;padding-bottom:0}
 .q-table tbody tr td:first-child{box-shadow:inset 3px 0 0 transparent}
-.q-table tbody tr.st-OPEN td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
-.q-table tbody tr.st-CLOSED td:first-child{box-shadow:inset 3px 0 0 var(--err)}
-.q-table tbody tr.st-CONNECTING td:first-child,.q-table tbody tr[class*="st-"]:not(.st-OPEN):not(.st-CLOSED) td:first-child{box-shadow:inset 3px 0 0 var(--wa)}
+.q-table tbody tr.rail-ok td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.q-table tbody tr.rail-bad td:first-child{box-shadow:inset 3px 0 0 var(--err)}
+.q-table tbody tr.rail-warn td:first-child{box-shadow:inset 3px 0 0 var(--wa)}
 
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
