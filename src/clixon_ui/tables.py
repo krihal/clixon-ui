@@ -11,6 +11,8 @@ RAIL_TRANSACTION = ("row.result == 'SUCCESS' ? 'rail-ok' : (row.result == 'FAILE
 
 RAIL_SERVICE = "row.status == 'Deployed' ? 'rail-ok' : 'rail-warn'"  # has the service script written device config yet?
 
+RAIL_RPC = "row.type == 'read' ? 'rail-ok' : 'rail-warn'"  # read-only vs may change the device
+
 FILL_HEIGHT = "calc(100vh - 80px)"  # viewport minus header and page padding
 
 
@@ -19,9 +21,10 @@ def page_column() -> ui.column:
     return ui.column().classes("w-full gap-2 no-wrap").style(f"height:{FILL_HEIGHT}")
 
 
-def data_table(columns: list[dict], rows: list[dict], row_key: str, rail: str, **kwargs) -> ui.table:
+def data_table(columns: list[dict], rows: list[dict], row_key: str, rail: str, height: str | None = None, **kwargs) -> ui.table:
+    """height=None fills the remaining page height; otherwise a fixed CSS height (for tables inside a longer page)."""
     t = ui.table(columns=columns, rows=rows, row_key=row_key, pagination={"rowsPerPage": 0}, **kwargs)
     t.props("virtual-scroll hide-bottom")
-    t.classes("w-full cursor-pointer sticky-head grow").style("min-height:0")
+    t.classes("w-full cursor-pointer sticky-head" + ("" if height else " grow")).style(f"min-height:0;height:{height}" if height else "min-height:0")
     t.props(f':table-row-class-fn="row => {rail}"')
     return t

@@ -94,6 +94,14 @@ class ClixonClient:
             raise RestconfError(f"{type(e).__name__}: {e}") from e
         return json.loads(buf)
 
+    async def device_schemas(self, device: str, module: str | None = None, revision: str | None = None,
+                             detail: bool = False) -> list[dict]:
+        """YANG modules the controller holds for a device (optionally one module, with its YANG text)."""
+        inp = {"device": device, "name": module, "revision": revision, "detail": detail or None}
+        body = {f"{NS}:input": {k: v for k, v in inp.items() if v is not None}}
+        out = (await self._request("POST", f"/operations/{NS}:get-device-schema", json=body)).get(f"{NS}:output", {})
+        return _as_list(out.get("schema", []))
+
     async def device_groups(self) -> list[str]:
         data = await self._request("GET", f"/data/{NS}:devices?content=config&depth=3")
         d = data.get(f"{NS}:devices", {})
