@@ -12,6 +12,7 @@ RAIL_TRANSACTION = ("row.result == 'SUCCESS' ? 'rail-ok' : (row.result == 'FAILE
 RAIL_SERVICE = "row.status == 'Deployed' ? 'rail-ok' : 'rail-warn'"  # has the service script written device config yet?
 
 RAIL_LINK = "row.status == 'one side' ? 'rail-warn' : 'rail-ok'"  # a link only one end reported is less certain
+RAIL_INVENTORY = "'rail-ok'"  # plain lists: no state to colour by
 RAIL_RPC = "row.type == 'read' ? 'rail-ok' : 'rail-warn'"  # read-only vs may change the device
 
 FILL_HEIGHT = "calc(100vh - var(--header-h) - 32px)"  # viewport minus header and page padding

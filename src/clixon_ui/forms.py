@@ -97,6 +97,8 @@ def render_child(c: Node, parent: Node, data: dict, lookup: Lookup, touch: Touch
         render_list(c, data, lookup, touch)
     elif c.kind == "choice":
         render_choice(c, data, lookup, touch)
+    elif c.kind == "anydata":
+        render_anydata(c, data, touch)
 
 
 # ------------------------------------------------------------------ leaves
@@ -196,6 +198,37 @@ def render_leaf_list(c: Node, data: dict, lookup: Lookup, touch: Touch) -> None:
             else:
                 el.props(f'hint="{d + " · " if d else ""}type a value and press Enter"')
             _mark_required(el, c.min_elements > 0, cur)
+
+
+def render_anydata(c: Node, data: dict, touch: Touch) -> None:
+    """`anydata` has no schema (e.g. a template body): edit it as JSON. Invalid JSON is flagged and blocks saving."""
+    import json
+
+    bad: dict = data.setdefault("__bad__", {})
+    cur = data.get(c.name)
+    text = json.dumps(cur, indent=2) if cur not in (None, {}) else ""
+
+    def check(v: str | None) -> str | None:
+        if not (v or "").strip():
+            return None
+        try:
+            json.loads(v)
+        except ValueError as e:
+            return f"Not valid JSON: {e}"
+        return None
+
+    def changed(e) -> None:
+        err = check(e.value)
+        if err:
+            bad[c.name] = err
+            return
+        bad.pop(c.name, None)
+        _set(data, c.name, json.loads(e.value) if (e.value or "").strip() else None, touch)
+
+    with field_row(c.name, c.mandatory) as lab:
+        el = ui.textarea(value=text, validation=check, on_change=changed).props(
+            'outlined input-style="min-height:240px;font-family:var(--mono);font-size:13px;line-height:1.5"').classes("w-full")
+        _hintprops(el, c, lab)
 
 
 # ------------------------------------------------------------------ structure

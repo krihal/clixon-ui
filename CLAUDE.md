@@ -167,3 +167,10 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   text. `ClixonClient.device_groups()` already reads them (`devices?content=config&depth=3`); wire it into
   `_load_lookup` in `service_views.py`.
 - A README for end users (the file is empty).
+
+## Inventory (devices, groups, profiles, templates, RPC templates)
+- `inventory_views.py`: list pages (`/groups`, `/profiles`, `/templates?tab=rpc`), shared YANG form at `/inventory/{kind}/form?key=|copy=`, `delete_flow`. Devices page has Add device + row menu Edit/Duplicate/Delete.
+- Writes go to the candidate (`client.inventory_put/delete`); take effect via `client.local_commit()` (`ietf-netconf:commit`, nothing pushed to devices). Always confirm with `diff_datastores()` first.
+- Never PUT an existing device (wipes mounted `config`): `client.device_update` PUTs/DELETEs one top-level setting at a time. Read device entries with `depth=3`.
+- After a device commit the UI offers Open/Reconnect.
+- Verified only against the fake controller; not yet against a live controller.

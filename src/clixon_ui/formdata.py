@@ -123,6 +123,9 @@ class Lookup:
 
     def values(self, path: str | None) -> list[str] | None:
         """Possible values for an absolute leafref path; None if path unsupported/unknown."""
+        if path and path.startswith("../"):
+            # relative reference between siblings of a list under /devices: resolve against /devices
+            path = "/devices/" + "/".join(p for p in path.split("/") if p not in ("..", ""))
         if not path or not path.startswith("/"):
             return None
         steps = [_local(re.sub(r"\[.*?\]", "", s)) for s in path.strip("/").split("/")]
@@ -191,6 +194,7 @@ def type_error(t: YType | None, v: Any, lookup: Lookup | None = None, path: str 
 def validate(node: Node, data: dict, lookup: Lookup | None = None, path: str = "") -> list[str]:
     """Validate a form dict against the schema; returns human-readable errors."""
     errs: list[str] = []
+    errs += [f"{path + '/' if path else ''}{node.name}/{k}: {m}" for k, m in (data.get("__bad__") or {}).items()]  # invalid JSON editors
     here = f"{path}/{node.name}" if path else node.name
     for c in data_children(node):
         v = data.get(c.name)

@@ -205,6 +205,51 @@ class ClixonClient:
                               **{"service-instance": instance})).get("tid")
         return await self.wait_transaction(int(tid), timeout=600, interval=0.5, on_update=on_update) if tid is not None else None
 
+    # -- inventory: devices, device groups, profiles, templates ---------------------------------------
+    INV = "/ds/ietf-datastores:candidate/clixon-controller:devices"
+
+    async def inventory(self) -> dict:
+        """All inventory lists of the candidate, shallow (`depth=3`): names and settings, but no device config."""
+        data = await self._request("GET", f"{self.INV}?content=config&depth=3")
+        return data.get(f"{NS}:devices", {})
+
+    async def inventory_entry(self, kind: str, key: str) -> dict | None:
+        """One entry. A device is read with depth=3 so its (huge) mounted config is left out."""
+        suffix = "?content=config&depth=3" if kind == "device" else ""
+        try:
+            data = await self._request("GET", f"{self.INV}/{kind}={quote(key, safe='')}{suffix}")
+        except RestconfError:
+            return None
+        return next(iter(_as_list(data.get(f"{NS}:{kind}", []))), None)
+
+    async def inventory_names(self) -> dict[str, list[str]]:
+        inv = await self.inventory()
+        return {k: sorted(str(e["name"]) for e in _as_list(inv.get(k, []))) for k in
+                ("device", "device-group", "device-profile", "template", "rpc-template")}
+
+    async def inventory_delete(self, kind: str, key: str) -> None:
+        await self._request("DELETE", f"{self.INV}/{kind}={quote(key, safe='')}")
+
+    async def inventory_put(self, kind: str, key: str, entry: dict) -> None:
+        """Create or replace one entry. NOT for an existing device: replacing it would wipe its mounted config."""
+        await self._request("PUT", f"{self.INV}/{kind}={quote(key, safe='')}", json={f"{NS}:{kind}": [entry]})
+
+    async def device_update(self, key: str, old: dict, new: dict) -> None:
+        """Change an existing device one top-level setting at a time, leaving the mounted `config` alone.
+        `old`/`new` are the entries as RESTCONF objects (without `config`); a setting missing in `new` is deleted."""
+        base = f"{self.INV}/device={quote(key, safe='')}"
+        for name in sorted((set(old) | set(new)) - {"name", "config"}):
+            if old.get(name) == new.get(name):
+                continue
+            if name not in new:
+                await self._request("DELETE", f"{base}/{name}")
+            else:
+                await self._request("PUT", f"{base}/{name}", json={f"{NS}:{name}": new[name]})
+
+    async def local_commit(self) -> None:
+        """Plain NETCONF commit of the controller's own candidate into running (no push to devices)."""
+        await self._request("POST", "/operations/ietf-netconf:commit", json={"ietf-netconf:input": {}})
+
     async def delete_service_commit(self, instance: str, on_update=None) -> dict | None:
         """The controller's own delete: removes the service instance and its device configuration, then commits.
 

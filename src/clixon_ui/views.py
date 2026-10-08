@@ -20,9 +20,12 @@ client: ClixonClient  # set by __init__.main()
 MENU = [
     ("Inventory", [
         ("/", "Devices", "dns"),
+        ("/groups", "Device groups", "workspaces"),
+        ("/profiles", "Profiles", "badge"),
         ("/network", "Network", "lan"),
     ]),
     ("Configuration", [
+        ("/templates", "Templates", "description"),
         ("/services", "Services", "hub"),
         ("/commit", "Diff / Commit", "difference"),
     ]),
@@ -38,7 +41,8 @@ STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 def menu_route(path: str) -> str:
     """Which menu entry a URL belongs to."""
     p = path.split("?")[0].rstrip("/") or "/"
-    for prefix, route in (("/services", "/services"), ("/network", "/network"), ("/commit", "/commit"),
+    for prefix, route in (("/services", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
+                          ("/templates", "/templates"), ("/network", "/network"), ("/commit", "/commit"),
                           ("/transactions", "/transactions"), ("/rpc", "/rpc")):
         if p == prefix or p.startswith(prefix + "/"):
             return route
@@ -205,6 +209,7 @@ async def run_tx(coro_tid, label: str):
 
 # ---------------------------------------------------------------- pages
 async def devices_page():
+    from . import inventory_views  # circular at import time
     selected: set[str] = set()
     rows: list[dict] = []
     columns = [
@@ -224,6 +229,10 @@ async def devices_page():
             <q-item clickable @click="$parent.$emit('act', {kind:'pull', name:props.row.name})"><q-item-section>Pull (sync)</q-item-section></q-item>
             <q-item clickable @click="$parent.$emit('act', {kind:'config', name:props.row.name})"><q-item-section>Show configuration</q-item-section></q-item>
             <q-item clickable @click="$parent.$emit('act', {kind:'diff', name:props.row.name})"><q-item-section>Show diff</q-item-section></q-item>
+            <q-separator />
+            <q-item clickable @click="$parent.$emit('act', {kind:'edit', name:props.row.name})"><q-item-section>Edit settings</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'copy', name:props.row.name})"><q-item-section>Duplicate</q-item-section></q-item>
+            <q-item clickable @click="$parent.$emit('act', {kind:'delete', name:props.row.name})"><q-item-section>Delete</q-item-section></q-item>
           </q-list></q-menu></q-btn></q-td>'''
     state_cell = '''
         <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'?props.value:'other')">{{props.value}}</span></q-td>'''
@@ -249,6 +258,14 @@ async def devices_page():
             ui.navigate.to(f"/devices/{name}")
         elif kind == "diff":
             ui.navigate.to(f"/commit?device={name}")
+        elif kind == "edit":
+            ui.navigate.to(inventory_views.form_url("device", key=name))
+        elif kind == "copy":
+            ui.navigate.to(inventory_views.form_url("device", copy=name))
+        elif kind == "delete":
+            ctx = ui.context.client
+            if await inventory_views.delete_flow("device", name):
+                reload_page(ctx)
         else:
             await act(kind, [name])
 
@@ -268,6 +285,8 @@ async def devices_page():
             ui.label("Devices").classes("text-2xl")
             summary = ui.label().classes("mut")
         with ui.row().classes("w-full items-center gap-3"):
+            ui.button("Add device", icon="add", on_click=lambda: ui.navigate.to(inventory_views.form_url("device"))
+                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)

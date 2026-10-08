@@ -188,6 +188,18 @@ class Schema:
                 self.services.append(n)
         self.services.sort(key=lambda n: n.name)
 
+    def inventory(self) -> dict[str, Node]:
+        """The editable lists under /devices (device, device-group, device-profile, template, rpc-template).
+
+        The device's `config` container is the mounted configuration of the device itself: it is not a setting
+        and must never be edited (or replaced) through a form, so it is removed here."""
+        ctrl = next(m for (n, _), m in ((k, v) for k, v in self.ctx.modules.items()) if n == CTRL)
+        devices = _convert(ctrl.search_one("container", "devices"))
+        out = {c.name: c for c in devices.children if c.kind == "list"}
+        if "device" in out:
+            out["device"].children = [c for c in out["device"].children if c.name != "config"]
+        return out
+
     def service(self, qname: str) -> Node | None:
         """qname = 'module:name' or just name."""
         mod, _, name = qname.rpartition(":")

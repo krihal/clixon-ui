@@ -82,7 +82,10 @@ def test_presence_container_not_required_when_absent(demo):
 
 def test_leafref_lookup():
     assert LOOKUP.values("/ctrl:devices/ctrl:device/ctrl:name") == ["r1", "r2"]
-    assert LOOKUP.values("../x") is None
+    assert LOOKUP.values("../x") == []                      # a sibling list that does not exist: no options
+    inv = Lookup({"devices": {"device-profile": [{"name": "PTX"}, {"name": "MX"}], "device": [{"name": "r1"}]}})
+    assert inv.values("../../device-profile/name") == ["MX", "PTX"]     # relative leafref between lists under /devices
+    assert inv.values("/devices/device/name") == ["r1"] and inv.values("nonsense") is None
 
 
 def test_preserved_nodes_survive_put(demo):
