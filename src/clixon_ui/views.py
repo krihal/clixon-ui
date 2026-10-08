@@ -58,7 +58,7 @@ def frame(active: str) -> None:
             for route, label, icon in MENU:
                 item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props(
                     "clickable" + (" active" if route == active else "")
-                ).classes("mx-1")
+                ).classes("w-full")
                 with item:
                     with ui.item_section().props("avatar").classes("min-w-0"):
                         ui.icon(icon)

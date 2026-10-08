@@ -37,10 +37,12 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer--bordered{border-right:1px solid var(--line)!important}
 
 /* menu */
-.q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);border-radius:var(--r-s);min-height:38px}
+.q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:16px}
 .q-drawer .q-item .q-icon{font-size:22px;color:var(--nav-tx)}
 .q-drawer .q-item:hover{background:var(--hover)}
-.q-drawer .q-item--active{background:var(--nav-on);color:var(--nav-on-tx)}
+/* selected item is a tab: same colour as the page, full width, merges into the page edge */
+.q-drawer .q-item{border-radius:0}
+.q-drawer .q-item--active{background:var(--bg)!important;color:var(--nav-on-tx);position:relative;margin-right:-1px;box-shadow:inset 3px 0 0 var(--acc)}
 .q-drawer .q-item--active .q-icon{color:var(--acc)}
 
 /* buttons */
