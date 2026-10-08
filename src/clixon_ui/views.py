@@ -35,7 +35,7 @@ def frame(active: str) -> None:
         ui.label(client.url).classes("text-sm text-gray-400")
         ui.label("● connected").classes("text-sm ok-tx")
 
-    drawer = ui.left_drawer(bordered=True, fixed=True).props(
+    drawer = ui.left_drawer(bordered=False, fixed=True).props(
         "width=250 mini-width=60 behavior=desktop"
     ).classes("p-0")
     labels: list[ui.item_section] = []

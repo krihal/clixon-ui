@@ -32,9 +32,9 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .line{border-color:var(--line)!important}
 .bg-page{background:var(--bg)}
 .err-box{background:var(--err-bg);color:var(--err);border-radius:8px;padding:8px 12px}
-.q-header{background:var(--panel)!important;color:var(--tx)!important;border-bottom:1px solid var(--line);box-shadow:none}
-.q-drawer{background:var(--side)!important;border-right:1px solid var(--line)}
-.q-drawer--bordered{border-right:1px solid var(--line)!important}
+.q-header{background:var(--panel)!important;color:var(--tx)!important;border:0!important;box-shadow:none!important}
+.q-drawer{background:var(--side)!important;border:0!important;box-shadow:none!important}
+.q-drawer--bordered,.q-drawer--left.q-drawer--bordered{border:0!important}
 
 /* menu */
 .q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:16px}
@@ -42,7 +42,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer .q-item:hover{background:var(--hover)}
 /* selected item is a tab: same colour as the page, full width, merges into the page edge */
 .q-drawer .q-item{border-radius:0}
-.q-drawer .q-item--active{background:var(--bg)!important;color:var(--nav-on-tx);position:relative;margin-right:-1px;box-shadow:inset 3px 0 0 var(--acc)}
+.q-drawer .q-item--active{background:var(--bg)!important;color:var(--nav-on-tx);box-shadow:inset 3px 0 0 var(--acc)}
 .q-drawer .q-item--active .q-icon{color:var(--acc)}
 
 /* buttons */
