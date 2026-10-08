@@ -27,6 +27,8 @@ uv run pytest -q
 | `service_views.py` | Services overview, instance table, create/edit/duplicate form, "commit diff" dialog |
 | `device_views.py` | Device configuration viewer (`/devices/<name>`) |
 | `rpc_views.py` | RPC page: Run (templates/custom), Available RPCs, CLI tabs |
+| `network.py` | Pure: discovery sources (`SOURCES`), `Adjacency`, `build_graph`, `filter_graph`, `group_links`, `radial_positions` |
+| `network_views.py` | Network page: user-triggered discovery, ECharts map, links table |
 | `schema.py` | Loads the controller's YANG (`get-schema`), parses with pyang into `Node`/`YType` |
 | `formdata.py` | Pure: RESTCONF JSON <-> form dict, validation, leafref lookup (RFC 7951 naming) |
 | `forms.py` | Renders a form for a YANG node (containers, lists, choices, leaf-lists, leafrefs) |
@@ -60,6 +62,15 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - A device's full config is ~32 MB (`get-device-config`, whole-device GET). Browse lazily: `device=X?depth=7&content=config`
   for the outline, then per-section paths **without** `depth` (`.../config/<root>/<module:section>/<list>=<key>`).
   `policy-options` alone is ~35 MB; the viewer refuses nodes over 4 MB and asks for a single entry.
+- Network map: `get-lldp-interface-neighbors` with no arguments returns *all* LLDP neighbours of a device
+  (`lldp-neighbors-information/lldp-neighbor-information[]`). Remote system names are FQDNs (`ptx-ac-2.sunet.se`):
+  match managed devices on the first label. A link is seen from both ends; `build_graph` merges them
+  ("confirmed") or keeps a "one side" link. Neighbours may announce a wrong/duplicate system name or only a
+  chassis MAC, and lab loops show up as device-to-itself links, so loops and management ports are hidden by default.
+- To support another vendor or RPC for the map, add a `DiscoverySource` to `network.SOURCES` (RPC body + parser to
+  `Adjacency`); the page and graph code do not change. Discovery must stay user-triggered (never poll).
+- NiceGUI `ui.echart(on_point_click=...)` raises `KeyError: 'value'` unless every node and edge in the series has a
+  `value`. Theme colours for chart text are JS expressions (`':color'` keys) so they follow light/dark.
 - Device RPC templates: `device-template-apply` with `type=RPC` and either `template` or `inline: {config: {...}}`.
   Junos CLI works as an inline RPC `{"command": "show version"}`; reply is structured data.
 - Device RPC list: `get-device-schema` (detail=true per module). Junos has ~170 `junos-rpc-*` modules (~15 MB,

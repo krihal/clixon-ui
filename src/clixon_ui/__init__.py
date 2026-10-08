@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import device_views, rpc_views, service_views, views
+from . import device_views, network_views, rpc_views, service_views, views
 from .client import ClixonClient
 
 

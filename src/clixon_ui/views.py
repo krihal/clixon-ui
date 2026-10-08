@@ -18,6 +18,7 @@ client: ClixonClient  # set by __init__.main()
 MENU = [  # (route, label, material icon); /restconf (raw console) is deliberately not listed
     ("/", "Devices", "dns"),
     ("/services", "Services", "hub"),
+    ("/network", "Network", "lan"),
     ("/commit", "Diff / Commit", "difference"),
     ("/transactions", "Transactions", "receipt_long"),
     ("/rpc", "RPC", "terminal"),
