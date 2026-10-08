@@ -70,7 +70,7 @@ async def _confirm_run(req: dict, devs: list[str], grps: list[str]) -> bool:
 
 
 def _show_card(name: str, data, error: str | None) -> None:
-    with ui.expansion(value=True).classes("w-full border border-[#e3e8ee] line rounded-lg").props("dense expand-separator") as ex:
+    with ui.expansion(value=True).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
         with ex.add_slot("header"):
             with ui.row().classes("items-center gap-2 w-full"):
                 ui.icon("error" if error else "check_circle", color="negative" if error else "positive", size="sm")
@@ -79,7 +79,7 @@ def _show_card(name: str, data, error: str | None) -> None:
             ui.label(error).classes("err-box whitespace-pre-wrap w-full")
             return
         lines, trunc = to_lines(data if data is not None else {})
-        view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=white text-color=dark")
+        view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props("dense no-caps unelevated toggle-color=primary color=transparent text-color=dark")
         text = ui.html(_text_html(lines) or '<div class="cl mut">Empty reply</div>').classes("confbody w-full").style("height:auto;max-height:50vh")
         raw = ui.code(json.dumps(data, indent=2), language="json").classes("w-full")
         text.bind_visibility_from(view, "value", lambda v: v == "text")
@@ -116,7 +116,7 @@ async def rpc_page():
             # ---- 1. what to run
             with ui.card().classes("w-full p-4 gap-3"):
                 kind = ui.toggle({"template": "RPC template", "custom": "Custom RPC"}, value="template").props(
-                    "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=dark")
+                    "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=transparent text-color=dark")
                 tpl_box = ui.column().classes("w-full gap-3")
                 custom_box = ui.column().classes("w-full gap-2")
                 tpl_box.bind_visibility_from(kind, "value", lambda v: v == "template")

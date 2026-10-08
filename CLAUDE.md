@@ -82,6 +82,13 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - Header height is one variable, `--header-h` in `theme.py`. Anything sized to the viewport must use
   `calc(100vh - var(--header-h) - ...)` (see `tables.FILL_HEIGHT`), never a hard-coded pixel offset.
 - Menu icons/hamburger sit on one centre line (x = 28 px) expanded and folded; keep that when touching the drawer CSS.
+- **Light and dark follow the system** (`prefers-color-scheme`): `theme.py` has one `:root` token set and a dark
+  override block; `ui.dark_mode(None)` lets Quasar components follow too. Never hard-code a colour: add a token
+  to both sets. Quasar utility classes with `!important` (`bg-white`, `text-dark`) beat our own `!important`
+  rules, so avoid them (e.g. toggles use `color=transparent`) instead of fighting them.
+- When editing the CSS string in `theme.py`, replace unique, complete rules, never slices found with `index()` on a
+  selector fragment (that once deleted half the stylesheet). After editing, check `{` and `}` counts are equal and
+  look at screenshots of both schemes.
 - Do not add numbered step markers, all-caps labels or decorative gradients.
 
 ## Working agreements
@@ -100,7 +107,6 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 ## Not done / ideas
 
 - Authentication (basic or client certificate) towards the controller and for the UI itself.
-- Dark theme (palette B "Control room" was designed; tokens live in `theme.py`).
 - Config templates (`device-template-apply` type CONFIG, the `deploy-*` templates) are not exposed.
 - Service forms don't offer device-group names for leafrefs (the lookup tree only has devices), so those are free
   text. `ClixonClient.device_groups()` already reads them (`devices?content=config&depth=3`); wire it into

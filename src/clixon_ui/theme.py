@@ -17,12 +17,13 @@ CSS = """
  --ok:#0b7a4b;--ok-bg:#e3f5ec;--err:#c8321f;--err-bg:#fdeae6;--wa:#9a6700;--wa-bg:#fff3d1;
  --add:#0a6b3d;--add-bg:#e6f6ec;--del:#a52b1b;--del-bg:#fdecea;
  --font:'Manrope',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+ --field-bg:#fff;--code-bg:#f6f8fa;--readonly-bg:#f4f6f8;--mark:#ffe58a;--pop-shadow:#14233a33;
  --header-h:60px;--r:12px;--r-s:8px;--shadow:0 1px 2px #14233a0d,0 4px 14px #14233a0a}
 
 body,.q-page,.q-layout{background:var(--bg)!important;color:var(--tx);font:15px/1.5 var(--font)}
 .q-btn,.q-field,.q-item,.q-table,.q-tab,.q-expansion-item,.q-badge,.q-tooltip,.q-menu,.q-dialog,.q-notification,.q-toggle,.q-chip,.q-btn-toggle{font-family:var(--font)!important}
 code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-numeric:tabular-nums}
-.nicegui-code,.q-card pre{background:#f6f8fa!important;color:var(--tx)!important;border-radius:8px}
+.nicegui-code,.q-card pre{background:var(--code-bg)!important;color:var(--tx)!important;border-radius:8px}
 
 /* page structure */
 .text-2xl{font-size:26px!important;line-height:1.2!important;font-weight:700!important;letter-spacing:-.02em;color:var(--tx)}
@@ -51,6 +52,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer .q-item__section--avatar{min-width:0!important;width:22px;padding-right:0}
 .q-drawer .q-item__section--main{margin-left:17px}
 .q-drawer--mini .q-item{padding-left:0!important;justify-content:center}
+.q-header .nav-burger,.q-header .nav-burger .q-icon{color:var(--tx)!important}
 .q-header .nav-burger{margin-left:10px;width:36px;height:36px;min-height:0}
 .q-drawer .q-item .q-icon{font-size:22px;color:var(--nav-tx)}
 .q-drawer .q-item:hover{background:var(--hover)}
@@ -61,20 +63,23 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 
 /* buttons */
 .q-btn{text-transform:none!important;font-weight:500;border-radius:var(--r-s)!important}
-.q-btn.q-btn--outline{background:#fff;color:var(--tx)!important}
+.q-btn.q-btn--outline{background:var(--field-bg);color:var(--tx)!important}
 .q-btn.q-btn--outline:before{border-color:var(--line-2)!important}
 .q-btn.q-btn--outline .q-btn__content,.q-btn.q-btn--outline .q-btn__content .q-icon{color:var(--tx)!important}
 .q-btn.q-btn--outline .q-icon{color:var(--nav-tx)!important}
 .q-btn.bg-primary{color:var(--on-acc)!important}
 .q-btn.q-btn--flat:not(.q-btn--round):hover{background:var(--hover)}
 .q-btn.q-btn--flat:not(.q-btn--round),.q-btn.q-btn--flat:not(.q-btn--round) .q-btn__content,.q-btn.q-btn--flat:not(.q-btn--round) .q-icon{color:var(--tx)!important}
-.q-btn-toggle{border:1px solid var(--line-2);border-radius:var(--r-s)!important;overflow:hidden}
-.q-btn-toggle .q-btn{background:#fff;color:var(--nav-tx)!important;border-radius:0!important}
-.q-btn-toggle .q-btn.bg-primary{background:var(--acc)!important;color:#fff!important}
+/* segmented toggles (QBtnToggle = q-btn-group of q-btn; the selected one has bg-primary) */
+.q-btn-group{border:1px solid var(--line-2);border-radius:var(--r-s)!important;overflow:hidden;box-shadow:none}
+.q-btn-group .q-btn{border-radius:0!important}
+.q-btn-group .q-btn:not(.bg-primary),.q-btn-group .q-btn:not(.bg-primary) .q-btn__content{color:var(--nav-tx)!important}
+.q-btn-group .q-btn:not(.bg-primary){background:var(--field-bg)}
+.q-btn-group .q-btn.bg-primary,.q-btn-group .q-btn.bg-primary .q-btn__content{color:#fff!important}
 
 /* surfaces */
 .q-card,.q-table__card{background:var(--panel)!important;color:var(--tx);border:1px solid var(--line);border-radius:var(--r)!important;box-shadow:var(--shadow)!important}
-.q-dialog .q-card{box-shadow:0 12px 40px #14233a33!important}
+.q-dialog .q-card{box-shadow:0 12px 40px var(--pop-shadow)!important}
 .q-expansion-item{border-radius:var(--r-s)}
 .q-expansion-item .q-item{color:var(--tx)}
 .q-expansion-item .q-item .q-icon{color:var(--mut)}
@@ -94,7 +99,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .sticky-head thead tr th{position:sticky;z-index:1;top:0;background:var(--panel)}
 
 /* form fields */
-.q-field--outlined .q-field__control{background:#fff;border-radius:var(--r-s)}
+.q-field--outlined .q-field__control{background:var(--field-bg);border-radius:var(--r-s)}
 .q-field--outlined .q-field__control:before{border-color:var(--line-2)}
 .q-field--outlined:not(.q-field--readonly) .q-field__control:hover:before{border-color:var(--mut)}
 .q-field__label,.q-field__bottom{color:var(--mut)}
@@ -102,7 +107,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-field--outlined .q-field__native,.q-field--outlined .q-field__input{color:var(--tx)}
 .q-tab{color:var(--tx)}
 .q-table th{color:var(--tx)!important}
-.q-field--readonly .q-field__control{background:#f4f6f8}
+.q-field--readonly .q-field__control{background:var(--readonly-bg)}
 .q-field--readonly .q-field__control:before{border-style:dashed}
 
 /* status rail on the left edge of every data-table row + uniform row height */
@@ -122,22 +127,38 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-field--outlined.req-empty:not(.q-field--readonly) .q-field__control:hover:before{border-color:var(--err)!important}
 .q-field--outlined.req-empty.q-field--focused .q-field__control:after{border-color:var(--err)!important}
 
+.q-menu,.q-select__dialog,.q-dialog .q-card{background:var(--panel)!important;color:var(--tx)!important}
+.q-menu .q-item{color:var(--tx)}
+.q-menu .q-item:hover,.q-menu .q-item--active{background:var(--hover)}
+body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--err);--q-warning:var(--wa)}
+
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
 .pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .pill-OPEN{background:var(--ok-bg);color:var(--ok)}.pill-CLOSED{background:var(--err-bg);color:var(--err)}.pill-other{background:var(--wa-bg);color:var(--wa)}
+/* Dark mode: follows the operating system / browser setting */
+@media (prefers-color-scheme: dark){
+:root{
+ --bg:#0f1a22;--panel:#15232e;--side:#0b141b;--line:#243645;--line-2:#35495a;
+ --tx:#eef3f7;--mut:#d3dde5;--acc:#6b95ff;--on-acc:#06122e;
+ --nav-tx:#eef3f7;--nav-on:#1d3447;--nav-on-tx:#ffffff;--hover:#1a2c3a;
+ --ok:#5fd3a0;--ok-bg:#123a2c;--err:#ff8a7a;--err-bg:#43211d;--wa:#f5c05a;--wa-bg:#3d3012;
+ --add:#7ee0a8;--add-bg:#0f3022;--del:#ff9d90;--del-bg:#3b1b19;
+ --field-bg:#101c26;--code-bg:#0d1821;--readonly-bg:#162531;--mark:#6b5a10;--pop-shadow:#00000099;
+ --shadow:0 1px 2px #00000040,0 4px 14px #00000033}
+}
 """
 
 DIFF_CSS = """
-.confbody{font:12.5px/1.6 var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 0;overflow:auto;height:62vh;white-space:pre}
+.confbody{font:12.5px/1.6 var(--mono);background:var(--field-bg);border:1px solid var(--line);border-radius:8px;padding:8px 0;overflow:auto;height:62vh;white-space:pre}
 .cl{padding:0 14px 0 0}.cl:hover{background:var(--hover)}
 .ln{display:inline-block;width:5ch;margin-right:14px;text-align:right;color:var(--mut);user-select:none}
-.confbody mark{background:#ffe58a;color:inherit;border-radius:2px}
+.confbody mark{background:var(--mark);color:inherit;border-radius:2px}
 .dl{white-space:pre;padding:0 12px;min-height:1.5em;border-left:3px solid transparent}
 .dl-add{background:var(--add-bg);color:var(--add);border-left-color:var(--add)}
 .dl-del{background:var(--del-bg);color:var(--del);border-left-color:var(--del)}
 .dl-ctx{color:var(--mut)}
-.dbody{font:12.5px/1.5 var(--mono);background:#fff;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh;padding:6px 0}
+.dbody{font:12.5px/1.5 var(--mono);background:var(--field-bg);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh;padding:6px 0}
 """
 
 
@@ -145,6 +166,6 @@ def apply() -> None:
     """Install the theme on the current page."""
     ui.colors(primary="#1f5eff", positive="#0b7a4b", negative="#c8321f", warning="#9a6700",
               secondary="#4a5a6e", info="#1f5eff", accent="#1f5eff")
-    ui.dark_mode(False)
+    ui.dark_mode(None)  # follow the system light/dark setting (Quasar components); our own tokens use prefers-color-scheme
     ui.add_css(CSS)
     ui.add_css(DIFF_CSS)

@@ -32,7 +32,7 @@ def frame(active: str) -> None:
     folded = app.storage.user.setdefault("folded", False)
 
     with ui.header().classes("items-center px-0 gap-2"):
-        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense color=dark").classes("nav-burger").tooltip("Fold/unfold menu")
+        ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense").classes("nav-burger").tooltip("Fold/unfold menu")
         ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:36px;display:block"></a>')
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
@@ -262,7 +262,7 @@ async def commit_page(device: str = ""):
     with ui.card().classes("w-full p-4 gap-3"):
         with ui.row().classes("w-full items-center gap-4"):
             mode = ui.toggle(MODES, value="dev" if device else "changes").props(
-                "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=white text-color=dark")
+                "no-caps no-wrap dense unelevated padding=6px\u00a016px toggle-color=primary color=transparent text-color=dark")
             ui.space()
             ui.button("Show diff", icon="difference", on_click=lambda: show()).props("no-caps no-wrap").classes(BTN)
         help_ = ui.label().classes("text-sm mut")
