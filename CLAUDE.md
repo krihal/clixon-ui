@@ -79,6 +79,8 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - Fonts are bundled (`static/fonts`): Manrope for UI, JetBrains Mono for data. The app must work offline.
 - Slot templates inside tables emit with `$parent.$emit(...)`. With `virtual=True` tables (only the RPC list) the slot
   is one level deeper: `$parent.$parent.$emit(...)`. Avoid native event names (`copy`, `click`) as custom event names.
+- Header height is one variable, `--header-h` in `theme.py`. Anything sized to the viewport must use
+  `calc(100vh - var(--header-h) - ...)` (see `tables.FILL_HEIGHT`), never a hard-coded pixel offset.
 - Menu icons/hamburger sit on one centre line (x = 28 px) expanded and folded; keep that when touching the drawer CSS.
 - Do not add numbered step markers, all-caps labels or decorative gradients.
 
