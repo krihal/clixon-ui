@@ -1,0 +1,30 @@
+[project]
+name = "clixon-ui"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Kristofer Hallin", email = "kristofer@sunet.se" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "nicegui>=3.18.0",
+    "pyang>=2.7.1",
+]
+
+[project.scripts]
+clixon-ui = "clixon_ui:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
