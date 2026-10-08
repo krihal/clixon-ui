@@ -88,9 +88,7 @@ def _show_card(name: str, data, error: str | None) -> None:
             ui.label("Output truncated in the text view; see JSON.").classes("warn-tx text-sm")
 
 
-@ui.page("/rpc", response_timeout=60)
 async def rpc_page():
-    views.frame("/rpc")
     client = views.client
     try:
         templates = await client.rpc_templates()

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import device_views, network_views, rpc_views, service_views, views
+from . import device_views, network_views, rpc_views, service_views, shell, views  # noqa: F401  (shell registers the page)
 from .client import ClixonClient
 
 
@@ -28,7 +28,6 @@ def main() -> None:
         # installed entry point or `python -m`, so hand over to the small script next to this file.
         os.execv(sys.executable, [sys.executable, str(Path(__file__).parent / "_dev.py"), *sys.argv[1:]])
     views.client = ClixonClient(a.url, verify=not a.insecure)
-    app.add_static_files("/static", STATIC)
     app.on_startup(service_views.preload)
     ui.run(host=a.host, port=a.port, title="Clixon UI", favicon=STATIC / "img" / "favicon.png", reload=a.reload, show=False,
            **({"uvicorn_reload_dirs": str(Path(__file__).parent), "uvicorn_reload_includes": "*.py"} if a.reload else {}),

@@ -6,7 +6,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from nicegui import app, ui
+from nicegui import app, background_tasks, ui
 
 from . import diffview, theme
 from .style import BTN, BTN_TOOLBAR
@@ -35,8 +35,24 @@ POLL_SECONDS = 5  # refresh interval for the Devices and Transactions pages
 STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 
 
-def frame(active: str) -> None:
-    """Common header + foldable left drawer."""
+def menu_route(path: str) -> str:
+    """Which menu entry a URL belongs to."""
+    p = path.split("?")[0].rstrip("/") or "/"
+    for prefix, route in (("/services", "/services"), ("/network", "/network"), ("/commit", "/commit"),
+                          ("/transactions", "/transactions"), ("/rpc", "/rpc")):
+        if p == prefix or p.startswith(prefix + "/"):
+            return route
+    return "/"  # Devices, including /devices/<name>
+
+
+def reload_page() -> None:
+    """Rebuild the current page content in place (a browser reload would rebuild header and menu too)."""
+    client = ui.context.client
+    background_tasks.create(client.sub_pages_router.refresh(), name="reload sub page", context=client)
+
+
+def frame() -> None:
+    """Header + foldable left drawer. Built once by the shell page; only the content area changes on navigation."""
     theme.apply()
     folded = app.storage.user.setdefault("folded", False)
 
@@ -48,6 +64,7 @@ def frame(active: str) -> None:
         "width=250 mini-width=56 behavior=desktop"
     ).classes("p-0")
     labels: list[ui.item_section] = []
+    items: dict = {}  # menu route -> its q-item, to move the 'selected' mark when the page changes
     headings: list = []  # section headings: visible when the menu is expanded
     dividers: list = []  # thin lines between sections: visible instead of the headings when folded
 
@@ -75,9 +92,8 @@ def frame(active: str) -> None:
                     dividers.append(ui.separator().classes("menu-divider"))
                 headings.append(ui.label(heading).classes("menu-heading"))
                 for route, label, icon in entries:
-                    item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props(
-                        "clickable" + (" active" if route == active else "")
-                    ).classes("w-full")
+                    item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props("clickable").classes("w-full")
+                    items[route] = item
                     with item:
                         with ui.item_section().props("avatar").classes("min-w-0"):
                             ui.icon(icon)
@@ -88,6 +104,18 @@ def frame(active: str) -> None:
                         with ui.tooltip(label).props("anchor='center right' self='center left'"):
                             pass
     apply()
+
+    def mark_active(path: str) -> None:
+        current = menu_route(path)
+        for route, item in items.items():
+            if route == current:
+                item.props("active")
+            else:
+                item.props(remove="active")
+
+    client = ui.context.client
+    mark_active(client.sub_pages_router.current_path)
+    client.sub_pages_router.on_path_changed(mark_active)
 
 
 async def guarded(coro, ok: str | None = None):
@@ -165,9 +193,7 @@ async def run_tx(coro_tid, label: str):
 
 
 # ---------------------------------------------------------------- pages
-@ui.page("/")
 async def devices_page():
-    frame("/")
     selected: set[str] = set()
     rows: list[dict] = []
     columns = [
@@ -264,9 +290,7 @@ DS_TYPES = ["SYNCED", "RUNNING", "CANDIDATE", "ACTIONS"]
 STAGES = ("INIT", "ACTIONS", "RESOLVED", "DONE")
 
 
-@ui.page("/commit", response_timeout=30)
 async def commit_page(device: str = ""):
-    frame("/commit")
     try:
         names = [d["name"] for d in await client.devices()]
     except RestconfError:
@@ -487,9 +511,7 @@ def transaction_dialog(tr: dict) -> None:
     d.open()
 
 
-@ui.page("/transactions")
 async def transactions_page():
-    frame("/transactions")
     with page_column():
         ui.label("Transactions").classes("text-2xl")
         ui.label("Click a transaction for details.").classes("mut")
@@ -529,9 +551,7 @@ async def transactions_page():
     ui.timer(POLL_SECONDS, refresh)
 
 
-@ui.page("/restconf")
 async def raw_page():
-    frame("/restconf")
     ui.label("Raw RESTCONF").classes("text-2xl")
     with ui.row().classes("items-end w-full"):
         method = ui.select(["GET", "POST"], value="GET").classes("w-24")

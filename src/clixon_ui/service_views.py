@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from nicegui import ui
 
@@ -50,8 +50,7 @@ async def _load_lookup(services: dict) -> Lookup:
     return Lookup({"devices": {"device": devs}, "services": services})
 
 
-async def _prologue(active: str = "/services"):
-    views.frame(active)
+async def _prologue():
     try:
         return await get_schema()
     except Exception as e:  # noqa: BLE001 - show anything to the user
@@ -136,7 +135,6 @@ async def commit_diff_dialog(title: str, what: str, instance: str | None = None,
     d.open()
 
 
-@ui.page("/services", response_timeout=30)
 async def services_overview():
     schema = await _prologue()
     ui.label("Services").classes("text-2xl")
@@ -157,8 +155,8 @@ async def services_overview():
                 ui.label(svc.description or svc.module).classes("text-xs text-gray-500 line-clamp-2")
 
 
-@ui.page("/services/{qname}", response_timeout=30)
 async def service_type_page(qname: str):
+    qname = unquote(qname)
     schema = await _prologue()
     if schema is None:
         return
@@ -218,13 +216,13 @@ async def service_type_page(qname: str):
                 ui.button("Delete", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
         if await d:
             await views.guarded(views.client.delete_service(svc.module, svc.name, key), f"Deleted {key} (candidate)")
-            ui.navigate.reload()
+            views.reload_page()
 
     table.on("del", lambda e: delete(e.args))
 
 
-@ui.page("/services/{qname}/form", response_timeout=30)
 async def service_form_page(qname: str, key: str = "", copy: str = ""):
+    qname = unquote(qname)
     """Create (no key), edit (key) or duplicate (copy=<key of the source>) a service instance."""
     schema = await _prologue()
     if schema is None:

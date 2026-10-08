@@ -28,9 +28,8 @@ def _lines_html(lines: list[str], needle: str) -> str:
     return "".join(out) or '<div class="cl mut">No matching lines</div>'
 
 
-@ui.page("/devices/{name}", response_timeout=60)
 async def device_config_page(name: str):
-    views.frame("/")
+    name = unquote(name)
     client = views.client
     state = next((d.get("conn-state", "") for d in await client.devices() if d["name"] == name), "")
 
@@ -43,7 +42,7 @@ async def device_config_page(name: str):
             ui.space()
             ui.button("Show diff", icon="difference", on_click=lambda: ui.navigate.to(f"/commit?device={quote(name)}")).props(
                 "outline no-caps no-wrap").classes(BTN)
-            ui.button("Reload", icon="refresh", on_click=lambda: ui.navigate.reload()).props("outline no-caps no-wrap").classes(BTN)
+            ui.button("Reload", icon="refresh", on_click=lambda: views.reload_page()).props("outline no-caps no-wrap").classes(BTN)
 
         try:
             cfg = await client.device_outline(name)
@@ -55,7 +54,7 @@ async def device_config_page(name: str):
                 if state != "OPEN":
                     async def open_it() -> None:
                         await views.run_tx(client.connection_change(name, "OPEN"), f"Open {name}")
-                        ui.navigate.reload()
+                        views.reload_page()
                     ui.button("Open device", icon="power", on_click=open_it).props("no-caps no-wrap").classes(BTN)
             return
         if not cfg:

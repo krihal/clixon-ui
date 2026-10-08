@@ -21,9 +21,10 @@ uv run pytest -q
 
 | File | Role |
 |---|---|
-| `__init__.py` | CLI entry (`main`), static files, startup schema preload |
+| `__init__.py` | CLI entry (`main`), startup schema preload |
+| `shell.py` | The only real page: header + menu once, `ui.sub_pages(ROUTES)` for the content; the route table lives here |
 | `client.py` | `ClixonClient`: all RESTCONF calls. GET retries 502/503; readable errors |
-| `views.py` | `frame()` (header + foldable menu), Devices, Diff/Commit, Transactions pages; `MENU` |
+| `views.py` | `frame()` (header + foldable menu), Devices, Diff/Commit, Transactions pages; grouped `MENU`, `reload_page()` |
 | `service_views.py` | Services overview, instance table, create/edit/duplicate form, "commit diff" dialog |
 | `device_views.py` | Device configuration viewer (`/devices/<name>`) |
 | `rpc_views.py` | RPC page: Run (templates/custom), Available RPCs, CLI tabs |
@@ -75,6 +76,22 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   Junos CLI works as an inline RPC `{"command": "show version"}`; reply is structured data.
 - Device RPC list: `get-device-schema` (detail=true per module). Junos has ~170 `junos-rpc-*` modules (~15 MB,
   ~6,400 RPCs). `get-*` RPCs are read-only, everything else asks for confirmation.
+
+## Single-page structure (read before adding a page)
+
+- Navigation is client-side: `shell.py` builds the header/menu once and a `ui.sub_pages` container swaps only the
+  content. A menu click must never reload the browser page (test it: set `window.__marker` in JS, click, read it back).
+- A page is a plain builder function (sync or async) registered in `shell.ROUTES`; **no** `@ui.page`, **no** `frame()`.
+  Arguments are filled **by name** from path parameters (`/services/{qname}`) and query parameters (`?key=`).
+  Path parameters arrive URL-encoded (`l2c%3Al2c`): `unquote()` them. Query parameters are already decoded.
+- To add a menu entry add it to `views.MENU` (grouped by purpose) and to `shell.ROUTES`; `views.menu_route()` maps a
+  URL to the highlighted entry.
+- Use `ui.navigate.to("/path")` (client-side here). Never `ui.navigate.reload()`: use `views.reload_page()`, which
+  rebuilds only the content. Background tasks that touch the UI need `context=client`.
+- Elements created by a page (including `ui.timer`) are deleted when you leave it, so polling stops (verified).
+- `app.add_static_files` must run **before** the catch-all page is registered (it is in `shell.py`), otherwise
+  `/static/...` is answered by the page and returns 404.
+- The sub-pages container is made full width in `theme.py` (`.nicegui-sub-pages`); keep it, or pages shrink to content.
 
 ## UI conventions (the user cares about these)
 

@@ -26,6 +26,8 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .nicegui-code,.q-card pre{background:var(--code-bg)!important;color:var(--tx)!important;border-radius:8px}
 
 /* page structure */
+/* the content area (ui.sub_pages) must fill the page width; it otherwise shrinks to its content */
+.nicegui-sub-pages{width:100%;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1rem}
 .text-2xl{font-size:26px!important;line-height:1.2!important;font-weight:700!important;letter-spacing:-.02em;color:var(--tx)}
 .text-lg{font-weight:600!important;color:var(--tx)}
 .mut,.text-gray-300,.text-gray-400,.text-gray-500{color:var(--mut)!important}

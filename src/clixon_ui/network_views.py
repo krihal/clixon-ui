@@ -66,9 +66,7 @@ def graph_option(g: Graph, layout: str, port_labels: bool) -> dict:
     return {"animation": False, "tooltip": {":formatter": "function(p){return p.data && p.data.tip ? p.data.tip : p.name}"}, "series": [series]}
 
 
-@ui.page("/network", response_timeout=30)
 async def network_page():
-    views.frame("/network")
     client = views.client
     try:
         devices = await client.devices()
