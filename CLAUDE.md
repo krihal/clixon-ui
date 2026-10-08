@@ -102,6 +102,24 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   `/static/...` is answered by the page and returns 404.
 - The sub-pages container is made full width in `theme.py` (`.nicegui-sub-pages`); keep it, or pages shrink to content.
 
+## Service commit / delete flows (`service_views.py`)
+
+- **Commit** = `controller-commit source=candidate push=COMMIT` with `actions=FORCE` + `service-instance` for one
+  instance, or `actions=CHANGE` for "all changed services". The controller commits the *whole candidate* afterwards, so
+  `commit_flow` first runs the dry run (same as Commit diff), shows the per-device diff, and warns about other
+  uncommitted service edits (`servicechanges.changed_instances`, candidate vs running). Nothing is sent without the
+  user's confirmation; a pending form edit is applied to the candidate only for the dry run and reverted, and saved
+  for real only after confirming.
+- **Delete** offers "from candidate" (staged) or "Delete & commit" (`actions=DELETE` removes the service **and** its
+  device configuration; asks a second time). There is **no undeploy** in the controller YANG: DELETE removes both the
+  service and its device data, nothing removes device data while keeping the service committed.
+- Handlers that await dialogs must capture `client = ui.context.client` first and call `views.reload_page(client)` /
+  `views.navigate_to(path, client)` afterwards: their own slot may belong to a deleted dialog by then.
+- Flows `await` their result dialog (so the page is not rebuilt under it) and `_dispose()` closed dialogs shortly after;
+  a closed dialog left in the page can keep a click-blocking backdrop.
+- Testing these needs a fake controller (never the real one): record `controller-commit` calls and assert that Cancel
+  sends nothing and a confirmed commit sends exactly one with the right `actions`/`service-instance`.
+
 ## UI conventions (the user cares about these)
 
 - **Buttons shown together have the same size.** Use `BTN` / `BTN_TOOLBAR` / `BTN_SM` from `style.py` via `.classes(...)`

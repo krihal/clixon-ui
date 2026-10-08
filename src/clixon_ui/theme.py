@@ -46,6 +46,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 /* row action icons: quiet by default, colour on hover */
 .row-actions .q-btn{color:var(--tx)!important}
 .row-actions .q-btn:hover{color:var(--acc)!important;background:var(--hover)}
+.row-actions .q-btn.act-commit:hover{color:var(--err)!important;background:var(--err-bg)}
 .row-actions .q-btn.act-del:hover{color:var(--err)!important;background:var(--err-bg)}
 
 /* menu */

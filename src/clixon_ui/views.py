@@ -45,10 +45,21 @@ def menu_route(path: str) -> str:
     return "/"  # Devices, including /devices/<name>
 
 
-def reload_page() -> None:
-    """Rebuild the current page content in place (a browser reload would rebuild header and menu too)."""
-    client = ui.context.client
-    background_tasks.create(client.sub_pages_router.refresh(), name="reload sub page", context=client)
+def reload_page(client=None) -> None:
+    """Rebuild the current page content in place (a browser reload would rebuild header and menu too).
+
+    Handlers that await dialogs should capture `ui.context.client` at their start and pass it here: by the time
+    they finish, their own UI slot may belong to a deleted dialog."""
+    client = client or ui.context.client
+    with client.layout:
+        background_tasks.create(client.sub_pages_router.refresh(), name="reload sub page", context=client)
+
+
+def navigate_to(path: str, client=None) -> None:
+    """ui.navigate.to for handlers that may have lost their UI context (see reload_page)."""
+    client = client or ui.context.client
+    with client.layout:
+        ui.navigate.to(path)
 
 
 def frame() -> None:

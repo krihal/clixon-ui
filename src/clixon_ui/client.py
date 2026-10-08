@@ -192,6 +192,27 @@ class ClixonClient:
         data = await self._request("GET", f"/ds/ietf-datastores:candidate/{NS}:services")
         return data.get(f"{NS}:services", {})
 
+    async def running_services(self) -> dict:
+        data = await self._request("GET", f"/ds/ietf-datastores:running/{NS}:services")
+        return data.get(f"{NS}:services", {})
+
+    async def commit_service(self, instance: str | None, on_update=None) -> dict | None:
+        """Push to the devices and commit. One instance is force-applied; None runs every service whose config changed.
+
+        NB: the controller commits the whole candidate afterwards, not only this instance."""
+        tid = (await self.rpc("controller-commit", source="ietf-datastores:candidate",
+                              actions="CHANGE" if instance is None else "FORCE", push="COMMIT",
+                              **{"service-instance": instance})).get("tid")
+        return await self.wait_transaction(int(tid), timeout=600, interval=0.5, on_update=on_update) if tid is not None else None
+
+    async def delete_service_commit(self, instance: str, on_update=None) -> dict | None:
+        """The controller's own delete: removes the service instance and its device configuration, then commits.
+
+        NB: like any commit this applies the whole candidate."""
+        tid = (await self.rpc("controller-commit", source="ietf-datastores:candidate", actions="DELETE", push="COMMIT",
+                              **{"service-instance": instance})).get("tid")
+        return await self.wait_transaction(int(tid), timeout=600, interval=0.5, on_update=on_update) if tid is not None else None
+
     @staticmethod
     def _service_path(module: str, name: str, key: str) -> str:
         return f"/ds/ietf-datastores:candidate/{NS}:services/{module}:{name}={quote(key, safe='')}"

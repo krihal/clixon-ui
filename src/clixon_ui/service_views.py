@@ -11,9 +11,10 @@ from . import diffview, views
 from .client import RestconfError
 from .formdata import Lookup, entry_from_json, service_to_json, validate
 from .forms import render_children
-from .style import BTN
+from .style import BTN, BTN_BAR
 from .tables import RAIL_SERVICE, data_table, page_column
 from .schema import Node, Schema, load_schema
+from .servicechanges import changed_instances
 
 _schema_task: asyncio.Task | None = None
 
@@ -135,6 +136,174 @@ async def commit_diff_dialog(title: str, what: str, instance: str | None = None,
     d.open()
 
 
+STAGES = ("INIT", "ACTIONS", "RESOLVED", "DONE")
+STAGE_TEXT = {"INIT": "Transaction started", "ACTIONS": "Service scripts running",
+              "RESOLVED": "Computing device config", "DONE": "Done"}
+
+
+def _dispose(*dialogs) -> None:
+    """Delete closed dialogs once their hide animation has finished, so no stale backdrop stays in the page."""
+    asyncio.get_running_loop().call_later(0.6, lambda: [d.delete() for d in dialogs if not d.is_deleted])
+
+
+def _progress(title: str, what: str):
+    """A small modal with live transaction progress. Returns (dialog, update(tr))."""
+    with ui.dialog().props("persistent") as dlg, ui.card().classes("w-[460px]"):
+        ui.label(title).classes("text-lg")
+        ui.label(what).classes("text-sm mut")
+        with ui.row().classes("items-center gap-2"):
+            ui.spinner(size="sm")
+            stage = ui.label("Starting transaction…")
+        bar = ui.linear_progress(value=0.05, show_value=False).props("instant-feedback")
+        detail = ui.label().classes("text-xs mut")
+    dlg.open()
+
+    def update(tr: dict) -> None:
+        st = tr.get("state", "INIT")
+        bar.set_value((STAGES.index(st) + 1) / len(STAGES) if st in STAGES else 0.1)
+        stage.set_text(f"{STAGE_TEXT.get(st, st)} (tid {tr.get('tid')})")
+        detail.set_text(tr.get("description", ""))
+
+    return dlg, update
+
+
+async def commit_flow(name: str, instance: str | None, *, own: str | None = None, apply=None, revert=None) -> bool:
+    """Commit one service instance (or, with instance=None, every service whose config changed) after asking.
+
+    1. Dry run (no push) to learn which devices would change, plus a check for other uncommitted candidate edits.
+    2. A confirmation dialog that shows exactly that. Nothing is committed unless the user agrees.
+    3. The real commit, with progress, and a result dialog.
+    `apply`/`revert` (async, optional) put a pending edit into the candidate temporarily for step 1 and take it out
+    again; `apply` is called once more right before the commit. `own` is how the instance appears in the
+    candidate-vs-running comparison ("l2c 'X'"). Returns True when the commit succeeded."""
+    client = views.client
+    dlg, update = _progress("Checking what will be committed", f"Dry run for {name}: nothing is pushed yet")
+    tr, diff, cand, run, err = None, "", {}, {}, None
+    try:
+        if apply:
+            await apply()
+        try:
+            tr, diff = await client.commit_diff(instance, on_update=update)
+            cand, run = await client.candidate_services(), await client.running_services()
+        finally:
+            if revert:
+                await revert()
+    except (RestconfError, TimeoutError) as e:
+        err = str(e) or type(e).__name__
+    finally:
+        dlg.close()
+        _dispose(dlg)
+    if err or not tr or tr.get("result") != "SUCCESS":
+        with ui.dialog() as d, ui.card().classes("w-[560px] gap-2"):
+            ui.label("Cannot commit").classes("text-lg")
+            ui.label((err or (tr or {}).get("reason") or "The dry run failed").strip()).classes("err-box whitespace-pre-wrap w-full")
+            ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+        d.open()
+        return False
+
+    secs = diffview.parse(diff)
+    others = [c for c in changed_instances(cand, run) if c != own] if instance is not None else []
+    with ui.dialog() as d, ui.card().classes("w-[620px] max-w-full gap-2"):
+        ui.label(f"Commit {name}?").classes("text-lg")
+        ui.label("This pushes the configuration to the devices below and commits it."
+                 if secs else "No device configuration changes. Only the controller's own configuration is committed.").classes("mut")
+        for s_ in secs:
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("dns", size="xs").classes("mut")
+                ui.label(s_.name or "changes")
+                ui.badge(f"+{s_.added}", color="positive").props("outline")
+                ui.badge(f"−{s_.removed}", color="negative").props("outline")
+        if others:
+            ui.label("The candidate also contains uncommitted changes to other services: " + ", ".join(others[:8])
+                     + (f" and {len(others) - 8} more" if len(others) > 8 else "") +
+                     ". A commit applies the whole candidate, so these are committed too.").classes("warn-tx text-sm")
+        with ui.row().classes("justify-end w-full"):
+            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Commit anyway" if others else "Commit", icon="rocket_launch", color="negative",
+                      on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
+    confirmed = await d
+    _dispose(d)
+    if not confirmed:
+        return False
+
+    return await _run_commit(name, lambda upd: client.commit_service(instance, on_update=upd), apply=apply)
+
+
+async def _run_commit(name: str, runner, *, apply=None, verb: str = "Commit") -> bool:
+    """Run the real commit transaction with progress and show its result. `runner(update)` starts and awaits it."""
+    dlg, update = _progress(f"{ {'Commit': 'Committing', 'Delete': 'Deleting'}.get(verb, verb) } {name}", "Pushing to the devices and committing")
+    tr, err = None, None
+    try:
+        if apply:
+            await apply()
+        tr = await runner(update)
+    except (RestconfError, TimeoutError) as e:
+        err = str(e) or type(e).__name__
+    finally:
+        dlg.close()
+        _dispose(dlg)
+    ok = bool(tr) and tr.get("result") == "SUCCESS" and not err
+    with ui.dialog() as d, ui.card().classes("w-[560px] gap-2"):
+        with ui.row().classes("items-center gap-2"):
+            ui.icon("check_circle" if ok else "error", color="positive" if ok else "negative")
+            ui.label(f"{verb} {'succeeded' if ok else 'failed'}").classes("text-lg")
+        if tr:
+            ui.label(f"Transaction {tr.get('tid')} · {tr.get('description', '')} · {_secs(tr)}").classes("text-xs mut")
+        if not ok:
+            ui.label((err or (tr or {}).get("reason") or "no result").strip()).classes("err-box whitespace-pre-wrap w-full")
+        with ui.row():
+            ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            if tr:
+                ui.button("Transaction details", icon="receipt_long", on_click=lambda: views.transaction_dialog(tr)).props("outline no-caps no-wrap").classes(BTN)
+    await d  # return (and let the caller reload the page) only once the user has read the result and closed it
+    _dispose(d)
+    await asyncio.sleep(0.4)  # let the dialog finish its hide animation; removing it mid-way leaves a click-blocking backdrop
+    return ok
+
+
+async def delete_flow(svc: Node, key: str) -> bool:
+    """Delete a service instance. Two ways, the staged one first:
+    - from the candidate only (nothing reaches the devices until a later commit), or
+    - "delete & commit": the controller's DELETE action removes the instance *and its device configuration*.
+    Returns True when something was deleted."""
+    name = f"{svc.name} '{key}'"
+    with ui.dialog() as d, ui.card().classes("w-[600px] max-w-full gap-2"):
+        ui.label(f"Delete {name}?").classes("text-lg")
+        ui.label("Delete from candidate removes the instance from the controller's candidate configuration only. "
+                 "The devices keep their configuration until the next commit.").classes("text-sm")
+        ui.label("Delete & commit removes the instance AND the configuration it created on the devices, and commits "
+                 "right away. A commit applies the whole candidate.").classes("warn-tx text-sm")
+        with ui.row().classes("justify-end w-full"):
+            ui.button("Cancel", on_click=lambda: d.submit("")).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Delete from candidate", on_click=lambda: d.submit("candidate")).props("outline no-caps no-wrap").classes(BTN)
+            ui.button("Delete & commit", icon="delete_forever", color="negative", on_click=lambda: d.submit("commit")).props("no-caps no-wrap").classes(BTN)
+    choice = await d
+    _dispose(d)
+    if choice == "candidate":
+        try:
+            await views.client.delete_service(svc.module, svc.name, key)
+        except RestconfError as e:
+            ui.notify(f"Could not delete: {e}", type="negative", multi_line=True, close_button=True, timeout=0)
+            return False
+        ui.notify(f"Deleted {name} from the candidate", type="positive")
+        return True
+    if choice == "commit":
+        inst = views.client.service_instance(svc.name, svc.keys[0], key)
+        # one more explicit question, because this reaches the devices
+        with ui.dialog() as d2, ui.card().classes("w-[520px] gap-2"):
+            ui.label(f"Really delete {name} from the devices?").classes("text-lg")
+            ui.label("Its configuration is removed from the devices and the change is committed. This cannot be undone.").classes("warn-tx")
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Cancel", on_click=d2.close).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Delete & commit", icon="delete_forever", color="negative", on_click=lambda: d2.submit(True)).props("no-caps no-wrap").classes(BTN)
+        confirmed2 = await d2
+        _dispose(d2)
+        if not confirmed2:
+            return False
+        return await _run_commit(name, lambda upd: views.client.delete_service_commit(inst, on_update=upd), verb="Delete")
+    return False
+
+
 async def services_overview():
     schema = await _prologue()
     ui.label("Services").classes("text-2xl")
@@ -181,6 +350,13 @@ async def service_type_page(qname: str):
                           "Device diff for changed services", "Running all services whose configuration has changed in candidate")
                       ).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
                 "Run service actions on the candidate and show the device diff. Nothing is pushed.")
+            async def commit_changed() -> None:
+                client = ui.context.client
+                if await commit_flow("all changed services", None):
+                    views.reload_page(client)
+
+            ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN).tooltip(
+                "Push every service whose configuration changed in the candidate to the devices and commit")
             ui.button(f"New {svc.name}", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
                       ).props("dense no-caps no-wrap").classes(BTN)
 
@@ -195,7 +371,8 @@ async def service_type_page(qname: str):
             <q-td :props="props"><span :class="'pill ' + (props.value == 'Deployed' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
         table.add_slot("body-cell-act", """
             <q-td :props="props" class="row-actions">
-              <q-btn flat dense round size="md" icon="visibility" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Preview device diff (no changes)</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="visibility" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Commit diff: show what would change on the devices</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="rocket_launch" class="act-commit" @click.stop="$parent.$emit('commit', props.row.key)"><q-tooltip>Commit this service to the devices…</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="edit" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="content_copy" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
@@ -203,20 +380,21 @@ async def service_type_page(qname: str):
         table.on("diff", lambda e: commit_diff_dialog(
             f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
             views.client.service_instance(svc.name, svc.keys[0], e.args)))
+        async def commit_row(key: str) -> None:
+            client = ui.context.client
+            name = f"{svc.name} '{key}'"
+            if await commit_flow(name, views.client.service_instance(svc.name, svc.keys[0], key), own=name):
+                views.reload_page(client)
+
+        table.on("commit", lambda e: commit_row(e.args))
         table.on("dup", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(e.args, safe='')}"))
         table.on("edit", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args, safe='')}"))
         table.on("rowClick", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args[1]['key'], safe='')}"))
 
     async def delete(key: str) -> None:
-        with ui.dialog() as d, ui.card():
-            ui.label(f"Delete {svc.name} '{key}' from the candidate datastore?").classes("text-lg")
-            ui.label("Takes effect on devices only after you deploy (Diff / Commit).").classes("mut")
-            with ui.row():
-                ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-                ui.button("Delete", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
-        if await d:
-            await views.guarded(views.client.delete_service(svc.module, svc.name, key), f"Deleted {key} (candidate)")
-            views.reload_page()
+        client = ui.context.client
+        if await delete_flow(svc, key):
+            views.reload_page(client)
 
     table.on("del", lambda e: delete(e.args))
 
@@ -260,28 +438,27 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
             new_key, n = f"{copy}-copy{n}", n + 1
         data[key_leaf] = new_key
 
-    with ui.row().classes("w-full items-center"):
-        ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}")).props("flat round dense")
-        ui.label(f"{'Edit' if editing else 'New'} {svc.name}" + (f": {key}" if editing else "")).classes("text-2xl")
-        if copy and not editing:
-            ui.label(f"copy of {copy}").classes("mut")
-        ui.space()
-        if editing:
-            ui.button("Duplicate", icon="content_copy",
-                      on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
-                      ).props("outline no-caps no-wrap").classes(BTN).tooltip("Create a new instance with the same settings")
-        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("outline no-caps no-wrap").classes(BTN)
-    if svc.description:
-        ui.label(svc.description).classes("text-gray-400")
-
-    status = ui.label().classes("text-sm text-warning")
+    # window-height layout: title on top, the fields scroll in the middle, the action bar stays at the bottom
+    with page_column():
+        head = ui.column().classes("w-full gap-1 shrink-0")
+        body = ui.column().classes("w-full gap-3 grow overflow-auto pr-2").style("min-height:0")
+        footer = ui.row().classes("w-full items-center gap-3 shrink-0 py-3 border-t line")
+    with head:
+        with ui.row().classes("w-full items-center"):
+            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}")).props("flat round dense")
+            ui.label(f"{'Edit' if editing else 'New'} {svc.name}" + (f": {key}" if editing else "")).classes("text-2xl")
+            if copy and not editing:
+                ui.label(f"copy of {copy}").classes("mut")
+        if svc.description:
+            ui.label(svc.description).classes("mut")
+        status = ui.label().classes("text-sm text-warning")
     dirty = {"v": False}
 
     def touch() -> None:
         dirty["v"] = True
         status.set_text("Unsaved changes")
 
-    with ui.column().classes("w-full gap-3 mt-2"):
+    with body:
         render_children(svc, data, lookup, touch, locked={key_leaf} if editing else set())
 
     def check() -> str | None:
@@ -323,6 +500,37 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         ui.notify(f"Saved {svc.name} '{k}' to candidate", type="positive")
         ui.navigate.to("/commit" if review else f"/services/{quote(qname)}")
 
+    async def revert_edit(k: str) -> None:
+        """Put the candidate back exactly as it was before this form's edit was applied."""
+        if editing:
+            await views.client.put_service(svc.module, svc.name, k, {f"{svc.module}:{svc.name}": [original]})
+        else:
+            await views.client.delete_service(svc.module, svc.name, k)
+
+    async def commit_click() -> None:
+        """Commit this instance. Pending form edits are applied only for the dry run, then reverted; they are saved
+        for real only if the user confirms."""
+        client = ui.context.client
+        k = check()
+        if k is None:
+            return
+        name = f"{svc.name} '{k}'"
+        pending = dirty["v"] or not editing
+
+        async def apply_edit() -> None:
+            if not await write(k):
+                raise RestconfError("The controller did not accept the change")
+
+        ok = await commit_flow(name, views.client.service_instance(svc.name, key_leaf, k), own=name,
+                               apply=apply_edit if pending else None,
+                               revert=(lambda: revert_edit(k)) if pending else None)
+        if ok:
+            dirty["v"] = False
+            if editing:
+                views.reload_page(client)  # fresh `created` and status
+            else:
+                views.navigate_to(f"/services/{quote(qname)}", client)
+
     async def preview() -> None:
         """Commit diff of this instance. Edits are applied to candidate only temporarily and reverted."""
         k = check()
@@ -336,23 +544,28 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         if not await write(k):
             return
 
-        async def revert() -> None:
-            if editing:  # put back exactly what was in candidate before
-                await views.client.put_service(svc.module, svc.name, k, {f"{svc.module}:{svc.name}": [original]})
-            else:
-                await views.client.delete_service(svc.module, svc.name, k)
-
-        await commit_diff_dialog(title, what, inst, after=revert,
+        await commit_diff_dialog(title, what, inst, after=lambda: revert_edit(k),
                                  note="Your edits were applied temporarily to compute this diff and then reverted; the candidate is unchanged.")
 
-    ui.separator()
-    with ui.row().classes("w-full items-center sticky bottom-0 bg-page py-2"):
-        ui.button("Save to candidate", icon="save", on_click=lambda: save(False)).props("no-caps no-wrap").classes(BTN)
-        ui.button("Commit diff", icon="preview", on_click=preview).props("no-caps no-wrap outline").classes(BTN).tooltip(
+    async def delete_here() -> None:
+        client = ui.context.client
+        if await delete_flow(svc, key):
+            views.navigate_to(f"/services/{quote(qname)}", client)
+
+    with footer:
+        ui.button("Save", icon="save", on_click=lambda: save(False)).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+            "Save to the candidate datastore. Nothing is pushed to the devices.")
+        ui.button("Commit diff", icon="preview", on_click=preview).props("no-caps no-wrap outline").classes(BTN_BAR).tooltip(
             "Show what this would change on the devices, without saving. Nothing is pushed.")
-        ui.button("Save & go to Commit", icon="difference", on_click=lambda: save(True)).props("no-caps no-wrap flat").classes(BTN).tooltip(
-            "Save to candidate, then open the Diff / Commit page (where you can deploy)")
-        ui.button("Cancel", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}")).props("flat no-caps no-wrap").classes(BTN)
+        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_click).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+            "Push this service to the devices and commit. You are asked to confirm first.")
+        if editing:
+            ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip(
+                "Delete this instance (from the candidate, or from the devices too)")
+            ui.button("Duplicate", icon="content_copy",
+                      on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
+                      ).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip("Create a new instance with the same settings")
+        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("outline no-caps no-wrap").classes(BTN_BAR)
 
 
 def _show_json(svc: Node, data: dict, preserved: dict) -> None:
