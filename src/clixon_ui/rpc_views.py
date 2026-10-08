@@ -250,7 +250,7 @@ async def rpc_page():
                  {"name": "description", "label": "Description", "field": "description", "align": "left"},
                  {"name": "args", "label": "Arguments", "field": "args", "align": "left", "classes": "mono"},
                  {"name": "use", "label": "", "field": "name", "align": "right"}],
-                rows, "name", RAIL_RPC, height="calc(100vh - 290px)")
+                rows, "name", RAIL_RPC, height="calc(100vh - 290px)", virtual=True)
             avail.bind_filter_from(find, "value")
             avail.add_slot("body-cell-type", '''
                 <q-td :props="props"><span :class="'pill ' + (props.value == 'read' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
@@ -259,7 +259,7 @@ async def rpc_page():
             avail.add_slot("body-cell-args", '''
                 <q-td :props="props" style="max-width:260px;white-space:normal">{{props.value}}</q-td>''')
             avail.add_slot("body-cell-use", '''
-                <q-td :props="props"><q-btn flat dense no-caps color="primary" label="Use" @click.stop="$parent.$emit('use', props.row.name)"><q-tooltip>Copy into the Custom RPC editor</q-tooltip></q-btn></q-td>''')
+                <q-td :props="props"><q-btn flat dense no-caps color="primary" label="Use" @click.stop="$parent.$parent.$emit('use', props.row.name)"><q-tooltip>Copy into the Custom RPC editor</q-tooltip></q-btn></q-td>''')
 
             def use(name: str) -> None:
                 kind.value = "custom"

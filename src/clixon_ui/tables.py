@@ -21,10 +21,12 @@ def page_column() -> ui.column:
     return ui.column().classes("w-full gap-2 no-wrap").style(f"height:{FILL_HEIGHT}")
 
 
-def data_table(columns: list[dict], rows: list[dict], row_key: str, rail: str, height: str | None = None, **kwargs) -> ui.table:
+def data_table(columns: list[dict], rows: list[dict], row_key: str, rail: str, height: str | None = None, virtual: bool = False, **kwargs) -> ui.table:
     """height=None fills the remaining page height; otherwise a fixed CSS height (for tables inside a longer page)."""
     t = ui.table(columns=columns, rows=rows, row_key=row_key, pagination={"rowsPerPage": 0}, **kwargs)
-    t.props("virtual-scroll hide-bottom")
+    # virtual scrolling only for very long tables: it nests the cell slots one component deeper, so
+    # slot templates must then emit with $parent.$parent instead of $parent
+    t.props("hide-bottom" + (" virtual-scroll" if virtual else ""))
     t.classes("w-full cursor-pointer sticky-head" + ("" if height else " grow")).style(f"min-height:0;height:{height}" if height else "min-height:0")
     t.props(f':table-row-class-fn="row => {rail}"')
     return t

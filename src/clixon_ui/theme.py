@@ -36,6 +36,15 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer{background:var(--side)!important;border:0!important;box-shadow:none!important}
 .q-drawer--bordered,.q-drawer--left.q-drawer--bordered{border:0!important}
 
+/* icons: light outlined style everywhere; the selected menu item uses the filled glyph */
+.q-icon.material-icons{font-family:'Material Icons Outlined'!important}
+.q-drawer .q-item--active .q-icon.material-icons{font-family:'Material Icons'!important}
+
+/* row action icons: quiet by default, colour on hover */
+.row-actions .q-btn{color:var(--mut)!important;opacity:.85}
+.row-actions .q-btn:hover{color:var(--acc)!important;opacity:1;background:var(--hover)}
+.row-actions .q-btn.act-del:hover{color:var(--err)!important;background:var(--err-bg)}
+
 /* menu */
 .q-drawer .q-item{font-size:15px;font-weight:500;color:var(--nav-tx);min-height:42px;padding-left:17px;padding-right:0}
 /* icon column: every icon (menu button included) is centred on x=28, expanded or folded (mini width 56) */

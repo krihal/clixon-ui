@@ -125,7 +125,7 @@ async def devices_page():
         {"name": "menu", "label": "", "field": "name", "align": "right"},
     ]
     row_menu = '''
-        <q-td :props="props"><q-btn flat dense round icon="more_horiz" color="grey">
+        <q-td :props="props" class="row-actions"><q-btn flat dense round icon="more_horiz">
           <q-menu auto-close><q-list dense style="min-width:150px">
             <q-item clickable @click="$parent.$emit('act', {kind:'open', name:props.row.name})"><q-item-section>Open</q-item-section></q-item>
             <q-item clickable @click="$parent.$emit('act', {kind:'close', name:props.row.name})"><q-item-section>Close</q-item-section></q-item>

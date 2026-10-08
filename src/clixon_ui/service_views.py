@@ -196,14 +196,16 @@ async def service_type_page(qname: str):
         table.add_slot("body-cell-status", '''
             <q-td :props="props"><span :class="'pill ' + (props.value == 'Deployed' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
         table.add_slot("body-cell-act", """
-            <q-td :props="props">
-              <q-btn flat dense round icon="preview" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Preview device diff (no changes)</q-tooltip></q-btn>
-              <q-btn flat dense round icon="edit" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
-              <q-btn flat dense round icon="delete" color="negative" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
+            <q-td :props="props" class="row-actions">
+              <q-btn flat dense round size="md" icon="visibility" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Preview device diff (no changes)</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="edit" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="content_copy" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
             </q-td>""")
         table.on("diff", lambda e: commit_diff_dialog(
             f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
             views.client.service_instance(svc.name, svc.keys[0], e.args)))
+        table.on("dup", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(e.args, safe='')}"))
         table.on("edit", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args, safe='')}"))
         table.on("rowClick", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?key={quote(e.args[1]['key'], safe='')}"))
 
@@ -222,8 +224,8 @@ async def service_type_page(qname: str):
 
 
 @ui.page("/services/{qname}/form", response_timeout=30)
-async def service_form_page(qname: str, key: str = ""):
-    """Create (no key) or edit (key) a service instance."""
+async def service_form_page(qname: str, key: str = "", copy: str = ""):
+    """Create (no key), edit (key) or duplicate (copy=<key of the source>) a service instance."""
     schema = await _prologue()
     if schema is None:
         return
@@ -246,10 +248,31 @@ async def service_form_page(qname: str, key: str = ""):
         preserved = {k: v for k, v in found.items() if k == "created"}
         original = found
     key_leaf = svc.keys[0]
+    if copy and not editing:
+        src = next((e for e in _instances(svc, services) if str(e.get(key_leaf)) == copy), None)
+        if src is None:
+            ui.label(f"{svc.name} '{copy}' not found in candidate").classes("text-negative")
+            return
+        # a copy is a brand-new instance: same settings, new name, and none of the controller's
+        # bookkeeping (`created` is dropped because it belongs to the source's device config)
+        data = entry_from_json(svc, src)
+        taken = {str(e.get(key_leaf)) for e in _instances(svc, services)}
+        new_key, n = f"{copy}-copy", 2
+        while new_key in taken:
+            new_key, n = f"{copy}-copy{n}", n + 1
+        data[key_leaf] = new_key
 
     with ui.row().classes("w-full items-center"):
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}")).props("flat round dense")
         ui.label(f"{'Edit' if editing else 'New'} {svc.name}" + (f": {key}" if editing else "")).classes("text-2xl")
+        if copy and not editing:
+            ui.label(f"copy of {copy}").classes("mut")
+        ui.space()
+        if editing:
+            ui.button("Duplicate", icon="content_copy",
+                      on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
+                      ).props("outline no-caps no-wrap").classes(BTN).tooltip("Create a new instance with the same settings")
+        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("outline no-caps no-wrap").classes(BTN)
     if svc.description:
         ui.label(svc.description).classes("text-gray-400")
 
@@ -332,8 +355,6 @@ async def service_form_page(qname: str, key: str = ""):
         ui.button("Save & go to Commit", icon="difference", on_click=lambda: save(True)).props("no-caps no-wrap flat").classes(BTN).tooltip(
             "Save to candidate, then open the Diff / Commit page (where you can deploy)")
         ui.button("Cancel", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}")).props("flat no-caps no-wrap").classes(BTN)
-        ui.space()
-        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("flat dense no-caps no-wrap").classes(BTN)
 
 
 def _show_json(svc: Node, data: dict, preserved: dict) -> None:
