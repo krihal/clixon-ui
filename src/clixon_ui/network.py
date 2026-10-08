@@ -84,8 +84,15 @@ class Link:
     b_port: str | None
     b_managed: bool
     descr: str = ""
-    parent: str = ""
+    a_parent: str = ""  # aggregate (LAG) the port on side a belongs to, e.g. ae0
+    b_parent: str = ""
     both_sides: bool = False  # the neighbour reported us too
+    a_isis: "PortMetric | None" = None  # filled in by apply_overlay
+    b_isis: "PortMetric | None" = None
+
+    @property
+    def parent(self) -> str:
+        return self.a_parent or self.b_parent
 
     @property
     def status(self) -> str:
@@ -140,7 +147,7 @@ def build_graph(adjs: list[Adjacency], managed: list[str]) -> Graph:
             used.add(rev)
             b = adjs[rev]
             g.links.append(Link(a.device, a.local_port, rdev, b.local_port, True, a.remote_descr or b.remote_descr,
-                                a.parent or b.parent, both_sides=True))
+                                a.parent, b.parent, both_sides=True))
         else:
             g.links.append(Link(a.device, a.local_port, rdev, a.remote_port, True, a.remote_descr, a.parent))
     return g
@@ -226,3 +233,132 @@ def radial_positions(g: Graph) -> dict[str, tuple[float, float]]:
             r = 1.75 if len(devs) == 1 else 1.55
             pos[ext] = (r * math.cos(a), r * math.sin(a))
     return pos
+
+
+# --------------------------------------------------------------------------- overlays (protocol data shown on the links)
+@dataclass
+class PortMetric:
+    """What a routing protocol says about one interface of one device."""
+    device: str
+    iface: str  # as configured, e.g. 'et-0/0/0.0' or 'ae0.0'
+    metrics: dict[int, int] = field(default_factory=dict)  # IS-IS level -> metric
+    circuit_levels: tuple[int, ...] = ()  # levels this interface runs
+    iface_state: str = ""  # e.g. 'Point to Point', 'Down', 'Passive', 'Disabled'
+    adj_state: str = ""  # adjacency state ('Up', 'Down', 'Init'), empty when there is none
+    adj_level: int | None = None
+    neighbour: str = ""  # system name of the adjacent router
+    holdtime: str = ""
+    adj_known: bool = True  # False when the adjacency query failed: a missing adjacency then means "unknown", not "down"
+
+    @property
+    def port(self) -> str:
+        return self.iface.split(".")[0]
+
+    @property
+    def level(self) -> int | None:
+        if self.adj_level in self.metrics:
+            return self.adj_level
+        return max(self.metrics) if self.metrics else None
+
+    @property
+    def metric(self) -> int | None:
+        return self.metrics.get(self.level) if self.level is not None else None
+
+    @property
+    def up(self) -> bool:
+        return self.adj_state.lower() == "up"
+
+
+@dataclass
+class Overlay:
+    key: str
+    label: str
+    rpcs: dict[str, dict]  # name -> inline RPC body; every body is sent to each device
+    parse: Callable[[str, dict[str, Any]], list[PortMetric]]  # (device, {rpc name: reply data}) -> port data
+    description: str = ""
+
+
+def _int(v: Any) -> int | None:
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_juniper_isis(device: str, replies: dict[str, Any]) -> list[PortMetric]:
+    """IS-IS from get-isis-interface-information (metrics per level) + get-isis-adjacency-information (neighbours)."""
+    ports: dict[str, PortMetric] = {}
+    info = (replies.get("get-isis-interface-information") or {}).get("isis-interface-information") or {}
+    for i in _as_list(info.get("isis-interface")):
+        name = _clean(i.get("interface-name"))
+        if not name:
+            continue
+        circuit = _int(i.get("circuit-type")) or 0
+        levels = {1: (1,), 2: (2,), 3: (1, 2)}.get(circuit, ())
+        metrics = {lvl: m for lvl, key in ((1, "metric-one"), (2, "metric-two")) if lvl in levels and (m := _int(i.get(key))) is not None}
+        # the interface state of the level that is actually in use
+        state = _clean(i.get("isis-interface-state-two" if 2 in levels else "isis-interface-state-one")) or ""
+        ports[name] = PortMetric(device, name, metrics, levels, state)
+    adj_known = "get-isis-adjacency-information" in replies  # absent = the query failed on this device
+    for pm in ports.values():
+        pm.adj_known = adj_known
+    adj = (replies.get("get-isis-adjacency-information") or {}).get("isis-adjacency-information") or {}
+    for a in _as_list(adj.get("isis-adjacency")):
+        name = _clean(a.get("interface-name"))
+        if not name:
+            continue
+        pm = ports.setdefault(name, PortMetric(device, name))
+        pm.adj_state = _clean(a.get("adjacency-state")) or ""
+        pm.adj_level = _int(a.get("level"))
+        pm.neighbour = _clean(a.get("system-name")) or ""
+        pm.holdtime = _clean(a.get("holdtime")) or ""
+    return list(ports.values())
+
+
+OVERLAYS: dict[str, Overlay] = {
+    "juniper-isis": Overlay(
+        key="juniper-isis", label="IS-IS metrics (Juniper)",
+        rpcs={"get-isis-interface-information": {"get-isis-interface-information": {}},
+              "get-isis-adjacency-information": {"get-isis-adjacency-information": {}}},
+        parse=parse_juniper_isis,
+        description="IS-IS interface metrics and adjacency state"),
+}
+DEFAULT_OVERLAY = "juniper-isis"
+
+
+def apply_overlay(g: Graph, ports: list[PortMetric]) -> None:
+    """Attach protocol data to the two ends of every link. A LAG member port is matched through its aggregate."""
+    index = {(p.device, p.port): p for p in ports}
+
+    def find(dev: str, port: str | None, parent: str) -> PortMetric | None:
+        for name in (port, parent):
+            if name and (dev, name) in index:
+                return index[(dev, name)]
+        return None
+
+    for l in g.links:
+        l.a_isis = find(l.a, l.a_port, l.a_parent)
+        l.b_isis = find(l.b, l.b_port, l.b_parent) if l.b_managed else None
+
+
+def isis_status(l: Link) -> str:
+    """'up': the ends peer; 'differs': up, but the two ends disagree on the metric; 'down': IS-IS is configured on
+    the link but there is no working adjacency; 'unknown': configured, but the adjacency query failed so we cannot
+    tell; 'none': the link is not part of IS-IS."""
+    ends = [e for e in (l.a_isis, l.b_isis)
+            if e is not None and (e.adj_state or (e.metrics and e.iface_state not in ("Passive", "Disabled")))]
+    if not ends:
+        return "none"
+    if any(e.adj_state and not e.up for e in ends):
+        return "down"
+    if not any(e.up for e in ends):
+        return "down" if all(e.adj_known for e in ends) else "unknown"
+    return "differs" if len({e.metric for e in ends if e.metric is not None}) > 1 else "up"
+
+
+def metric_text(l: Link) -> str:
+    """'200' or '200 / 150' when the two ends disagree; empty when IS-IS is not involved."""
+    ms = [e.metric for e in (l.a_isis, l.b_isis) if e is not None and e.metric is not None]
+    if not ms:
+        return ""
+    return str(ms[0]) if len(set(ms)) == 1 else " / ".join(str(m) for m in ms)

@@ -70,6 +70,15 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   chassis MAC, and lab loops show up as device-to-itself links, so loops and management ports are hidden by default.
 - To support another vendor or RPC for the map, add a `DiscoverySource` to `network.SOURCES` (RPC body + parser to
   `Adjacency`); the page and graph code do not change. Discovery must stay user-triggered (never poll).
+- Protocol data on the map is an *overlay* (`network.OVERLAYS`): a set of RPC bodies sent to every device plus a parser
+  to `PortMetric`; `apply_overlay` attaches it to both ends of each LLDP link (a LAG member is matched through its
+  aggregate, `Link.a_parent/b_parent`). IS-IS (Juniper): `get-isis-interface-information` (`metric-one` = level 1,
+  `metric-two` = level 2; use the level the interface runs / the adjacency uses) + `get-isis-adjacency-information`
+  (a single adjacency arrives as a dict, not a list). Link status: up / differs (the two ends disagree on the metric)
+  / down / **unknown** (an adjacency query failed: never report that as "down") / none. To add another protocol, add an
+  `Overlay`; the colouring in `network_views.graph_option` keys off the status names.
+- Never run two discoveries at once while testing: overlapping RPCs on the same device make the controller answer
+  errors, which looks like a bug in the overlay.
 - NiceGUI `ui.echart(on_point_click=...)` raises `KeyError: 'value'` unless every node and edge in the series has a
   `value`. Theme colours for chart text are JS expressions (`':color'` keys) so they follow light/dark.
 - Device RPC templates: `device-template-apply` with `type=RPC` and either `template` or `inline: {config: {...}}`.

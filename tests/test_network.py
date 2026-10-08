@@ -94,3 +94,69 @@ def test_radial_positions():
     assert p["oob"] == (0.0, 0.0)                                         # shared by three devices -> centre
     assert math.hypot(*p["cust"]) > 1.5                                   # hangs off 'a', outside the ring
     assert math.cos(math.atan2(p["cust"][1], p["cust"][0]) - math.atan2(p["a"][1], p["a"][0])) > 0.99   # same direction as 'a'
+
+
+# ------------------------------------------------------------------ IS-IS overlay
+ISIS_IFACES = {"isis-interface-information": {"isis-interface": [
+    {"interface-name": "et-0/0/0.0", "circuit-type": "2", "isis-interface-state-one": "Disabled", "isis-interface-state-two": "Point to Point",
+     "metric-one": "10", "metric-two": "200"},
+    {"interface-name": "ae0.0", "circuit-type": "2", "isis-interface-state-two": "Point to Point", "metric-one": "10", "metric-two": "50"},
+    {"interface-name": "et-0/1/6:0.0", "circuit-type": "2", "isis-interface-state-two": "Down", "metric-one": "10", "metric-two": "30000"},
+    {"interface-name": "lo0.0", "circuit-type": "2", "isis-interface-state-two": "Passive", "metric-one": "0", "metric-two": "0"},
+]}}
+ISIS_ADJ = {"isis-adjacency-information": {"isis-adjacency": {   # a single adjacency arrives as a dict, not a list
+    "interface-name": "et-0/0/0.0", "system-name": "ptx-ac-2", "level": "2", "adjacency-state": "Up", "holdtime": "26"}}}
+REPLIES = {"get-isis-interface-information": ISIS_IFACES, "get-isis-adjacency-information": ISIS_ADJ}
+
+
+def test_parse_isis():
+    from clixon_ui.network import OVERLAYS, parse_juniper_isis
+    ports = {p.iface: p for p in parse_juniper_isis("ptx-ac-1", REPLIES)}
+    p = ports["et-0/0/0.0"]
+    assert (p.port, p.metrics, p.metric, p.level, p.up, p.neighbour, p.iface_state) == (
+        "et-0/0/0", {2: 200}, 200, 2, True, "ptx-ac-2", "Point to Point")   # level-2 only interface: metric-two, not metric-one
+    assert ports["et-0/1/6:0.0"].up is False and ports["et-0/1/6:0.0"].metric == 30000
+    assert parse_juniper_isis("d", {}) == [] and OVERLAYS["juniper-isis"].parse is parse_juniper_isis
+    assert set(OVERLAYS["juniper-isis"].rpcs) == set(REPLIES)
+
+
+def _isis_graph():
+    from clixon_ui.network import PortMetric, apply_overlay
+    adjs = [Adjacency("a", "et-0/0/0", "b.x", "et-0/0/0"), Adjacency("b", "et-0/0/0", "a.x", "et-0/0/0"),
+            Adjacency("a", "et-0/0/4", "c.x", "et-0/0/4", parent="ae0"), Adjacency("c", "et-0/0/4", "a.x", "et-0/0/4", parent="ae9"),
+            Adjacency("a", "et-0/2/0", "cust", "Gi1"), Adjacency("a", "et-0/0/7", "b.x", "et-0/0/7"), Adjacency("b", "et-0/0/7", "a.x", "et-0/0/7")]
+    g = build_graph(adjs, ["a", "b", "c"])
+    up = lambda d, i, m, nb: PortMetric(d, i, {2: m}, (2,), "Point to Point", "Up", 2, nb)
+    apply_overlay(g, [up("a", "et-0/0/0.0", 200, "b"), up("b", "et-0/0/0.0", 200, "a"),
+                      up("a", "ae0.0", 50, "c"), up("c", "ae9.0", 80, "a"),                          # via the LAG, and the ends differ
+                      PortMetric("a", "et-0/0/7.0", {2: 10}, (2,), "Down")])                         # configured, no adjacency
+    return {(l.a, l.a_port): l for l in g.links}
+
+
+def test_overlay_status_and_metric_text():
+    from clixon_ui.network import isis_status, metric_text
+    L = _isis_graph()
+    assert (isis_status(L[("a", "et-0/0/0")]), metric_text(L[("a", "et-0/0/0")])) == ("up", "200")
+    assert (isis_status(L[("a", "et-0/0/4")]), metric_text(L[("a", "et-0/0/4")])) == ("differs", "50 / 80")   # LAG member matched through its aggregate
+    assert (isis_status(L[("a", "et-0/0/7")]), metric_text(L[("a", "et-0/0/7")])) == ("down", "10")
+    assert (isis_status(L[("a", "et-0/2/0")]), metric_text(L[("a", "et-0/2/0")])) == ("none", "")           # a customer link is not in IS-IS
+
+
+def test_per_side_parents_kept():
+    L = _isis_graph()
+    link = L[("a", "et-0/0/4")]
+    assert (link.a_parent, link.b_parent, link.parent) == ("ae0", "ae9", "ae0")
+
+
+def test_failed_adjacency_query_is_unknown_not_down():
+    from clixon_ui.network import PortMetric, apply_overlay, isis_status, parse_juniper_isis
+    only_ifaces = {"get-isis-interface-information": ISIS_IFACES}            # the adjacency RPC failed on this device
+    ports = parse_juniper_isis("a", only_ifaces)
+    assert all(p.adj_known is False for p in ports)
+    g = build_graph([Adjacency("a", "et-0/0/0", "b.x", "et-0/0/0"), Adjacency("b", "et-0/0/0", "a.x", "et-0/0/0")], ["a", "b"])
+    apply_overlay(g, ports)
+    assert isis_status(g.links[0]) == "unknown"
+    # with a successful query that returns no adjacency, the same link is really down
+    ports = parse_juniper_isis("a", {**only_ifaces, "get-isis-adjacency-information": {}})
+    apply_overlay(g, ports)
+    assert isis_status(g.links[0]) == "down"

@@ -223,6 +223,8 @@ async def devices_page():
         except RestconfError as e:
             ui.notify(str(e), type="negative")
             return
+        if tbl.is_deleted:  # the user left the page while this poll was in flight
+            return
         new = [{**d, "since": fmt_ts(d.get("conn-state-timestamp")), "sync": fmt_ts(d.get("sync-timestamp"))} for d in devs]
         summary.set_text(f"{len(new)} total · {sum(r['conn-state'] == 'OPEN' for r in new)} open")
         if new != rows:  # only touch the table when something changed, so scroll position survives polling
@@ -540,6 +542,8 @@ async def transactions_page():
             try:
                 trs = list(reversed(await client.transactions()))[:200]
             except RestconfError:
+                return
+            if t.is_deleted:  # the user left the page while this poll was in flight
                 return
             new = [{**x, "time": fmt_ts(x.get("timestamp")), "dur": duration(x)} for x in trs]
             if new != rows:
