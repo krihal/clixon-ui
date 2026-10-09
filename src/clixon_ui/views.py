@@ -166,13 +166,14 @@ def fmt_ts(ts: str | None) -> str:
         return ts
 
 
-async def run_many(label: str, starters: dict) -> dict:
+async def run_many(label: str, starters: dict, limit: int = 8, count: int | None = None) -> dict:
     """Run one controller RPC per device **concurrently** and wait for all their transactions.
 
     `starters` maps device name -> zero-argument callable returning the coroutine that starts the RPC
-    (and yields a tid). At most 8 run at once (the controller's web server answers 502 under heavy
-    parallelism). Shows one progress toast and one summary. Returns {device: transaction or error string}."""
-    gate = asyncio.Semaphore(8)
+    (and yields a tid). At most `limit` (default 8) run at once (the controller's web server answers 502 under heavy
+    parallelism). Shows one progress toast and one summary. Returns {device: transaction or error string}.
+    `count` is the number of devices shown in the toasts when one starter covers several (a glob pull)."""
+    gate = asyncio.Semaphore(limit)
 
     async def one(name: str, start):
         async with gate:
@@ -185,7 +186,8 @@ async def run_many(label: str, starters: dict) -> dict:
             except (RestconfError, TimeoutError) as e:
                 return name, str(e) or type(e).__name__
 
-    n = ui.notification(f"{label}: {len(starters)} device{'s' if len(starters) != 1 else ''} in parallel…",
+    total = count or len(starters)
+    n = ui.notification(f"{label}: {total} device{'s' if total != 1 else ''}{' in parallel' if limit > 1 and not count else ''}…",
                         spinner=True, timeout=None)
     try:
         done = dict(await asyncio.gather(*(one(name, st) for name, st in starters.items())))
@@ -193,11 +195,13 @@ async def run_many(label: str, starters: dict) -> dict:
         n.dismiss()
     bad = {name: (r if isinstance(r, str) else (r.get("reason") or r.get("result") or "failed").strip())
            for name, r in done.items() if isinstance(r, str) or r.get("result") != "SUCCESS"}
-    ok = len(done) - len(bad)
-    if not bad:
-        ui.notify(f"{label}: {ok} of {len(done)} succeeded", type="positive")
+    if count and not bad:
+        ui.notify(f"{label}: {count} of {count} succeeded", type="positive")
+    elif not bad:
+        ui.notify(f"{label}: {len(done)} of {len(done)} succeeded", type="positive")
     else:
-        ui.notify(f"{label}: {ok} of {len(done)} succeeded, {len(bad)} failed\n" +
+        ok = (count or len(done)) - len(bad)
+        ui.notify(f"{label}: {ok} of {count or len(done)} succeeded, {len(bad)} failed\n" +
                   "\n".join(f"• {name}: {why[:160]}" for name, why in sorted(bad.items())),
                   type="negative", multi_line=True, close_button=True, timeout=0)
     return done
@@ -288,9 +292,16 @@ async def devices_page():
             ui.notify("Select devices first", type="warning")
             return
         label = "Pull" if kind == "pull" else kind.title()
-        starters = {name: (lambda name=name: client.config_pull(name)) if kind == "pull"
-                    else (lambda name=name: client.connection_change(name, kind.upper())) for name in names}
-        await run_many(label, starters)
+        if kind == "pull":
+            # config-pull locks the candidate datastore, so two pulls cannot overlap ("Candidate db is locked").
+            # The controller pulls every device a glob matches inside ONE transaction, so all devices go as "*";
+            # any other selection (a glob cannot list arbitrary names) is pulled one device at a time.
+            if len(names) > 1 and set(names) == {r["name"] for r in rows}:
+                await run_many(label, {"all devices": lambda: client.config_pull("*")}, limit=1, count=len(names))
+            else:
+                await run_many(label, {n: (lambda n=n: client.config_pull(n)) for n in names}, limit=1)
+        else:
+            await run_many(label, {n: (lambda n=n: client.connection_change(n, kind.upper())) for n in names})
         await refresh()
 
     with page_column():
