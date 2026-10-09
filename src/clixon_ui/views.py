@@ -302,7 +302,11 @@ async def devices_page():
             else:
                 await run_many(label, {n: (lambda n=n: client.config_pull(n)) for n in names}, limit=1)
         else:
-            await run_many(label, {n: (lambda n=n: client.connection_change(n, kind.upper())) for n in names})
+            # A subset goes one device at a time (overlapping connection changes upset the controller);
+            # a selection covering every device keeps the parallel default.
+            everything = set(names) == {r["name"] for r in rows}
+            await run_many(label, {n: (lambda n=n: client.connection_change(n, kind.upper())) for n in names},
+                           limit=8 if everything else 1)
         await refresh()
 
     with page_column():

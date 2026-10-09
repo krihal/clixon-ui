@@ -75,9 +75,14 @@ class ClixonClient:
 
     # -- devices -----------------------------------------------------------
     async def devices(self) -> list[dict]:
-        # State alone omits devices that have none (DISABLED/CLOSED), so merge the shallow config too.
+        # State alone omits devices that have none (DISABLED/never connected), so merge the shallow config too.
         state = await self.get(f"{NS}:devices?content=nonconfig")
-        config = await self.get(f"{NS}:devices?content=config&depth=3")
+        try:
+            config = await self.get(f"{NS}:devices?content=config&depth=3")
+        except RestconfError as e:
+            if "Mountpoint operation" not in str(e):
+                raise
+            config = {}  # a closed device cannot be read through its mountpoint: state alone has to do
         found: dict[str, dict] = {}
         for data in (config, state):
             for chunk in _as_list(data.get(f"{NS}:devices", {})):

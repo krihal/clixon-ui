@@ -99,10 +99,13 @@ class RpcIndex:
                     async with gate:
                         got = await self.client.device_schemas(device, s["name"], s.get("revision"), detail=True)
                     text = got[0].get("data", "") if got else ""
+                    if not text:
+                        return []  # not cached: the YANG may simply not be there yet
                     self._modules[key] = await asyncio.to_thread(parse_module, text, s["name"])
                 return self._modules[key]
 
             rpcs = [r for part in await asyncio.gather(*(one(s) for s in wanted)) for r in part]
             rpcs.sort(key=lambda r: r.name)
-            self._devices[device] = rpcs
+            if schemas:  # a device that was never connected has no YANG yet: do not cache the empty answer
+                self._devices[device] = rpcs
             return rpcs

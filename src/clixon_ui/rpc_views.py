@@ -253,6 +253,12 @@ async def rpc_page():
                 ui.spinner(size="sm")
                 status_text = ui.label("Loading RPCs from the device's YANG…").classes("mut")
             status.set_visibility(False)
+            with ui.row().classes("items-center gap-3 warn-tx") as no_yang:
+                ui.icon("info", size="sm")
+                ui.label("The controller has no YANG for this device yet. It is fetched the first time the device "
+                         "connects: open the device (Devices page), then press Reload.")
+                ui.button("Open device", icon="power", on_click=lambda: open_selected()).props("outline dense no-caps no-wrap").classes(BTN)
+            no_yang.set_visibility(False)
             avail = data_table(
                 [{"name": "name", "label": "RPC", "field": "name", "align": "left", "sortable": True, "classes": "name"},
                  {"name": "type", "label": "Type", "field": "type", "align": "left"},
@@ -282,6 +288,11 @@ async def rpc_page():
             avail.on("use", lambda e: use(e.args))
             avail.on("rowClick", lambda e: use(e.args[1]["name"]))
 
+            async def open_selected() -> None:
+                if dev_pick.value:
+                    await views.run_tx(client.connection_change(dev_pick.value, "OPEN"), f"Open {dev_pick.value}")
+                    await load(True)
+
             async def load(refresh: bool = False) -> None:
                 if not dev_pick.value:
                     return
@@ -293,6 +304,7 @@ async def rpc_page():
                     ui.notify(f"Could not read RPCs: {e}", type="negative", multi_line=True, close_button=True)
                     return
                 status.set_visibility(False)
+                no_yang.set_visibility(not rpcs)
                 shown = [r for r in rpcs if r.read_only or not only_read["v"]]
                 rows[:] = [{"name": r.name, "type": "read" if r.read_only else "ACTION", "area": r.area,
                             "description": r.description, "args": ", ".join(r.args)} for r in shown]

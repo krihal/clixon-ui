@@ -136,7 +136,7 @@ def _alert(kind: str, title: str, detail: str, action: str, on_click) -> None:
         ui.button(action, on_click=on_click).props("outline no-caps no-wrap dense").classes("w-48 h-9 shrink-0")
 
 
-async def _open_closed(names: list[str]) -> None:
+async def _open_closed(names: list[str], total: int) -> None:
     """Open every closed device, after asking: it changes live device connections."""
     with ui.dialog() as d, ui.card().classes("w-[520px] gap-2"):
         ui.label(f"Open {len(names)} closed devices?").classes("text-lg")
@@ -147,7 +147,8 @@ async def _open_closed(names: list[str]) -> None:
     ok = bool(await d)
     d.delete()
     if ok:
-        await views.run_many("Open", {n: (lambda n=n: views.client.connection_change(n, "OPEN")) for n in names})
+        await views.run_many("Open", {n: (lambda n=n: views.client.connection_change(n, "OPEN")) for n in names},
+                             limit=8 if len(names) == total else 1)  # a subset goes one device at a time
 
 
 def _attention(s: dict) -> None:
@@ -160,7 +161,7 @@ def _attention(s: dict) -> None:
     if closed:
         items += 1
         _alert("err", f"{len(closed)} device{'s' if len(closed) != 1 else ''} closed", _names(closed), "Open all closed",
-               lambda: _open_closed(closed))
+               lambda: _open_closed(closed, s["devices"]["total"]))
     failed = s.get("tx", {}).get("failed", 0)
     if failed:
         items += 1
