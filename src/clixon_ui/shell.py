@@ -5,14 +5,15 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import device_views, inventory_views, network_views, rpc_views, service_views, views
+from . import dashboard, device_views, inventory_views, network_views, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
 app.add_static_file(local_file=Path(__file__).parent / "static" / "img" / "favicon.png", url_path="/favicon.ico")
 
 ROUTES = {
-    "/": views.devices_page,
+    "/": dashboard.dashboard_page,
+    "/devices": views.devices_page,
     "/devices/{name}": device_views.device_config_page,
     "/groups": inventory_views.groups_page,
     "/profiles": inventory_views.profiles_page,

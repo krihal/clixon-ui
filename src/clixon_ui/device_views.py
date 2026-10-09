@@ -35,7 +35,7 @@ async def device_config_page(name: str):
 
     with page_column():
         with ui.row().classes("w-full items-center gap-3"):
-            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/")).props("flat round dense")
+            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/devices")).props("flat round dense")
             ui.label(name).classes("text-2xl")
             ui.html(f'<span class="pill pill-{state if state in ("OPEN", "CLOSED") else "other"}">{escape(state or "?")}</span>')
             ui.label("Configuration as held by the controller").classes("mut")

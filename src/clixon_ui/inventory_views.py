@@ -18,7 +18,7 @@ from .formdata import Lookup, entry_from_json, service_to_json, validate
 from .forms import render_children
 from .schema import Node, data_children
 from .service_views import _dispose, _progress, get_schema
-from .style import BTN, BTN_BAR
+from .style import BTN, BTN_BAR, BTN_TOOLBAR
 from .tables import RAIL_INVENTORY, data_table, page_column
 
 
@@ -31,7 +31,7 @@ class Kind:
 
 
 KINDS = {
-    "device": Kind("device", "Device", "Devices", "/"),
+    "device": Kind("device", "Device", "Devices", "/devices"),
     "device-group": Kind("device-group", "Device group", "Device groups", "/groups"),
     "device-profile": Kind("device-profile", "Profile", "Profiles", "/profiles"),
     "template": Kind("template", "Template", "Templates", "/templates"),
@@ -59,8 +59,9 @@ def summary(kind: str, e: dict) -> str:
 
 
 # --------------------------------------------------------------------------------------------- list pages
-async def _list(kind_key: str) -> None:
-    """Table of one inventory list with add / edit / duplicate / delete."""
+async def _list(kind_key: str, lead=None) -> None:
+    """Table of one inventory list with add / edit / duplicate / delete.
+    `lead` builds the left end of the title row (instead of the plain heading)."""
     kind = KINDS[kind_key]
     client = views.client
     try:
@@ -72,13 +73,16 @@ async def _list(kind_key: str) -> None:
     entries = entries if isinstance(entries, list) else [entries]
     rows = sorted(({"name": str(e["name"]), "descr": str(e.get("description", "")), "summary": summary(kind_key, e)} for e in entries),
                   key=lambda r: r["name"])
-    with ui.row().classes("w-full items-center"):
-        ui.label(kind.plural).classes("text-2xl")
+    with ui.row().classes("w-full items-center h-11 shrink-0"):
+        if lead:
+            lead()
+        else:
+            ui.label(kind.plural).classes("text-2xl")
         ui.label(f"{len(rows)}").classes("mut")
-        ui.space()
-        flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("w-56")
-        ui.button(f"New {kind.title.lower()}", icon="add", on_click=lambda: ui.navigate.to(form_url(kind_key))
-                  ).props("dense no-caps no-wrap").classes(BTN)
+    with ui.row().classes("w-full items-center gap-3"):
+        flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
+        ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(form_url(kind_key))
+                  ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
     table = data_table(
         [{"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
          {"name": "descr", "label": "Description", "field": "descr", "align": "left"},
@@ -115,19 +119,15 @@ async def profiles_page() -> None:
 
 
 async def templates_page(tab: str = "config") -> None:
+    kind = "rpc-template" if tab == "rpc" else "template"
+
+    def lead() -> None:
+        ui.toggle({"template": "Configuration templates", "rpc-template": "RPC templates"}, value=kind,
+                  on_change=lambda e: ui.navigate.to("/templates?tab=rpc" if e.value == "rpc-template" else "/templates")
+                  ).props("no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
+
     with page_column():
-        which = ui.toggle({"template": "Configuration templates", "rpc-template": "RPC templates"},
-                          value="rpc-template" if tab == "rpc" else "template").props(
-            "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
-        box = ui.column().classes("w-full grow gap-2 no-wrap").style("min-height:0")
-
-        async def show() -> None:
-            box.clear()
-            with box:
-                await _list(which.value)
-
-        which.on_value_change(lambda e: show())
-        await show()
+        await _list(kind, lead)
 
 
 # --------------------------------------------------------------------------------------------- flows
@@ -398,8 +398,8 @@ async def inventory_form_page(kind: str, key: str = "", copy: str = "") -> None:
             "Show what would change compared to the running configuration, without saving")
         ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
             "Save and commit the candidate. You are asked to confirm first.")
-        if editing:
-            ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR)
-            ui.button("Duplicate", icon="content_copy", on_click=lambda: ui.navigate.to(form_url(kind_key, copy=key))
-                      ).props("outline no-caps no-wrap").classes(BTN_BAR)
+        # always shown (disabled for a new entry) so every button keeps its place
+        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).set_enabled(editing)
+        ui.button("Duplicate", icon="content_copy", on_click=lambda: ui.navigate.to(form_url(kind_key, copy=key))
+                  ).props("outline no-caps no-wrap").classes(BTN_BAR).set_enabled(editing)
         ui.button("Show JSON", icon="data_object", on_click=show_json).props("outline no-caps no-wrap").classes(BTN_BAR)

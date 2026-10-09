@@ -24,7 +24,8 @@ uv run pytest -q
 | `__init__.py` | CLI entry (`main`), startup schema preload |
 | `shell.py` | The only real page: header + menu once, `ui.sub_pages(ROUTES)` for the content; the route table lives here |
 | `client.py` | `ClixonClient`: all RESTCONF calls. GET retries 502/503; readable errors |
-| `views.py` | `frame()` (header + foldable menu), Devices, Diff/Commit, Transactions pages; grouped `MENU`, `reload_page()` |
+| `dashboard.py` / `stats.py` | Landing page `/` (stat cards, devices/services/transactions panels, inventory buttons pinned at the bottom; refreshes every 10 s only when data changed) / pure numbers for it |
+| `views.py` | `frame()` (header + foldable menu), Devices (now `/devices`), Diff/Commit, Transactions pages; grouped `MENU`, `reload_page()` |
 | `service_views.py` | Services overview, instance table, create/edit/duplicate form, "commit diff" dialog |
 | `device_views.py` | Device configuration viewer (`/devices/<name>`) |
 | `rpc_views.py` | RPC page: Run (templates/custom), Available RPCs, CLI tabs |
@@ -144,6 +145,7 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - When editing the CSS string in `theme.py`, replace unique, complete rules, never slices found with `index()` on a
   selector fragment (that once deleted half the stylesheet). After editing, check `{` and `}` counts are equal and
   look at screenshots of both schemes.
+- Primary/negative buttons are *tonal* (pale tint + coloured text, tokens `--acc`/`--dan`). Their rules live in `@layer overrides{}` in `theme.py`: NiceGUI puts Quasar's `!important` utilities in a later layer, and unlayered `!important` rules lose to them (that is why plain overrides silently did nothing).
 - Do not add numbered step markers, all-caps labels or decorative gradients.
 
 ## Working agreements

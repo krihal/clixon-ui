@@ -12,7 +12,7 @@ CSS = """
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400 500;font-display:swap;src:url(/static/fonts/JetBrainsMono-latin.woff2) format('woff2')}
 :root{
  --bg:#f4f6f8;--panel:#fff;--side:#fff;--line:#e3e8ee;--line-2:#cdd5df;
- --tx:#0a0f1a;--mut:#1c2533;--acc:#1f5eff;--on-acc:#fff;
+ --tx:#0a0f1a;--mut:#1c2533;--acc:#2f5fd0;--dan:#b0412f;--on-acc:#fff;
  --nav-tx:#0a0f1a;--nav-on:#eaf1ff;--nav-on-tx:#0f2238;--hover:#f3f6fb;
  --ok:#0b7a4b;--ok-bg:#e3f5ec;--err:#c8321f;--err-bg:#fdeae6;--wa:#9a6700;--wa-bg:#fff3d1;
  --add:#0a6b3d;--add-bg:#e6f6ec;--del:#a52b1b;--del-bg:#fdecea;
@@ -33,6 +33,8 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .mut,.text-gray-300,.text-gray-400,.text-gray-500{color:var(--mut)!important}
 .err-tx{color:var(--err)!important}.warn-tx{color:var(--wa)!important}.ok-tx{color:var(--ok)!important}
 .line{border-color:var(--line)!important}
+.alert-warn,.alert-err,.alert-ok{border-radius:10px;border:1px solid}.alert-warn{background:var(--wa-bg);color:var(--wa);border-color:var(--wa)}.alert-err{background:var(--err-bg);color:var(--err);border-color:var(--err)}.alert-ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+.fill-col{align-self:stretch}.fill-field,.fill-field .q-field__inner,.fill-field .q-field__control{height:100%}.fill-field textarea{height:100%!important;resize:none}
 .bg-page{background:var(--bg)}
 .err-box{background:var(--err-bg);color:var(--err);border-radius:8px;padding:8px 12px}
 .q-header{height:var(--header-h)!important;min-height:var(--header-h)!important;background:var(--panel)!important;color:var(--tx)!important;border:0!important;box-shadow:none!important}
@@ -72,7 +74,15 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-btn.q-btn--outline:before{border-color:var(--line-2)!important}
 .q-btn.q-btn--outline .q-btn__content,.q-btn.q-btn--outline .q-btn__content .q-icon{color:var(--tx)!important}
 .q-btn.q-btn--outline .q-icon{color:var(--nav-tx)!important}
-.q-btn.bg-primary{color:var(--on-acc)!important}
+/* tonal buttons: inside a layer that precedes Quasar's own !important utilities (unlayered !important rules lose to them) */
+@layer overrides{
+.q-btn.bg-primary,.q-btn.bg-negative{box-shadow:inset 0 0 0 1px var(--tone-line)!important}
+.q-btn.bg-primary{--tone:var(--acc);--tone-line:color-mix(in srgb,var(--acc) 38%,transparent);background:color-mix(in srgb,var(--acc) 15%,var(--panel))!important;color:var(--acc)!important}
+.q-btn.bg-negative{--tone:var(--dan);--tone-line:color-mix(in srgb,var(--dan) 42%,transparent);background:color-mix(in srgb,var(--dan) 14%,var(--panel))!important;color:var(--dan)!important}
+.q-btn.bg-primary:hover{background:color-mix(in srgb,var(--acc) 24%,var(--panel))!important}
+.q-btn.bg-negative:hover{background:color-mix(in srgb,var(--dan) 24%,var(--panel))!important}
+.q-btn.bg-primary .q-btn__content,.q-btn.bg-negative .q-btn__content,.q-btn.bg-primary .q-icon,.q-btn.bg-negative .q-icon{color:inherit!important}
+}
 .q-btn.q-btn--flat:not(.q-btn--round):hover{background:var(--hover)}
 .q-btn.q-btn--flat:not(.q-btn--round),.q-btn.q-btn--flat:not(.q-btn--round) .q-btn__content,.q-btn.q-btn--flat:not(.q-btn--round) .q-icon{color:var(--tx)!important}
 /* segmented toggles (QBtnToggle = q-btn-group of q-btn; the selected one has bg-primary) */
@@ -80,7 +90,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-btn-group .q-btn{border-radius:0!important}
 .q-btn-group .q-btn:not(.bg-primary),.q-btn-group .q-btn:not(.bg-primary) .q-btn__content{color:var(--nav-tx)!important}
 .q-btn-group .q-btn:not(.bg-primary){background:var(--field-bg)}
-.q-btn-group .q-btn.bg-primary,.q-btn-group .q-btn.bg-primary .q-btn__content{color:#fff!important}
+.q-btn-group .q-btn.bg-primary{box-shadow:none!important;border-radius:0!important}
 
 /* surfaces */
 .q-card,.q-table__card{background:var(--panel)!important;color:var(--tx);border:1px solid var(--line);border-radius:var(--r)!important;box-shadow:var(--shadow)!important}
@@ -135,7 +145,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-menu,.q-select__dialog,.q-dialog .q-card{background:var(--panel)!important;color:var(--tx)!important}
 .q-menu .q-item{color:var(--tx)}
 .q-menu .q-item:hover,.q-menu .q-item--active{background:var(--hover)}
-body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--err);--q-warning:var(--wa)}
+body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--dan);--q-warning:var(--wa)}
 
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
@@ -145,7 +155,7 @@ body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--err);--q-w
 @media (prefers-color-scheme: dark){
 :root{
  --bg:#0f1a22;--panel:#15232e;--side:#0b141b;--line:#243645;--line-2:#35495a;
- --tx:#eef3f7;--mut:#d3dde5;--acc:#6b95ff;--on-acc:#06122e;
+ --tx:#eef3f7;--mut:#d3dde5;--acc:#9db7ff;--dan:#ffa797;--on-acc:#06122e;
  --nav-tx:#eef3f7;--nav-on:#1d3447;--nav-on-tx:#ffffff;--hover:#1a2c3a;
  --ok:#5fd3a0;--ok-bg:#123a2c;--err:#ff8a7a;--err-bg:#43211d;--wa:#f5c05a;--wa-bg:#3d3012;
  --add:#7ee0a8;--add-bg:#0f3022;--del:#ff9d90;--del-bg:#3b1b19;
@@ -169,8 +179,8 @@ DIFF_CSS = """
 
 def apply() -> None:
     """Install the theme on the current page."""
-    ui.colors(primary="#1f5eff", positive="#0b7a4b", negative="#c8321f", warning="#9a6700",
-              secondary="#4a5a6e", info="#1f5eff", accent="#1f5eff")
+    ui.colors(primary="#2f5fd0", positive="#0b7a4b", negative="#b0412f", warning="#9a6700",
+              secondary="#4a5a6e", info="#2f5fd0", accent="#2f5fd0")
     ui.dark_mode(None)  # follow the system light/dark setting (Quasar components); our own tokens use prefers-color-scheme
     ui.add_css(CSS)
     ui.add_css(DIFF_CSS)

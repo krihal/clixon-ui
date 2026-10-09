@@ -18,15 +18,18 @@ client: ClixonClient  # set by __init__.main()
 # Menu sections: (heading, [(route, label, material icon), ...]). Grouped by what the pages are for.
 # /restconf (raw console) is deliberately not listed.
 MENU = [
+    ("Overview", [
+        ("/", "Dashboard", "space_dashboard"),
+    ]),
     ("Inventory", [
-        ("/", "Devices", "dns"),
+        ("/devices", "Devices", "dns"),
         ("/groups", "Device groups", "workspaces"),
         ("/profiles", "Profiles", "badge"),
         ("/network", "Network", "lan"),
     ]),
     ("Configuration", [
-        ("/templates", "Templates", "description"),
         ("/services", "Services", "hub"),
+        ("/templates", "Templates", "description"),
         ("/commit", "Diff / Commit", "difference"),
     ]),
     ("Operations", [
@@ -46,7 +49,13 @@ def menu_route(path: str) -> str:
                           ("/transactions", "/transactions"), ("/rpc", "/rpc")):
         if p == prefix or p.startswith(prefix + "/"):
             return route
-    return "/"  # Devices, including /devices/<name>
+    if p.startswith("/inventory/"):  # the shared inventory form belongs to the list it edits
+        kind = p.split("/")[2] if p.count("/") >= 2 else ""
+        return {"device-group": "/groups", "device-profile": "/profiles", "template": "/templates",
+                "rpc-template": "/templates"}.get(kind, "/devices")
+    if p == "/devices" or p.startswith("/devices/"):
+        return "/devices"
+    return "/"
 
 
 def reload_page(client=None) -> None:
@@ -281,21 +290,21 @@ async def devices_page():
         await refresh()
 
     with page_column():
-        with ui.row().classes("w-full items-center gap-3"):
+        with ui.row().classes("w-full items-center gap-3 h-11 shrink-0"):
             ui.label("Devices").classes("text-2xl")
             summary = ui.label().classes("mut")
         with ui.row().classes("w-full items-center gap-3"):
-            ui.button("Add device", icon="add", on_click=lambda: ui.navigate.to(inventory_views.form_url("device"))
-                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Pull (sync)", icon="cloud_download", on_click=lambda: act("pull")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("Diff selected", icon="difference",
                       on_click=lambda: ui.navigate.to(f"/commit?device={','.join(sorted(selected))}")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-            search = ui.input(placeholder="Search devices…").props("outlined dense clearable").classes("grow min-w-52")
+            search = ui.input(placeholder="Search devices…").props("outlined dense clearable").classes("grow min-w-40")
             with search.add_slot("prepend"):
                 ui.icon("search")
+            ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(inventory_views.form_url("device"))
+                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
         tbl = data_table(columns, rows, "name", RAIL_DEVICE, selection="multiple",
                          on_select=lambda e: (selected.clear(), selected.update(r["name"] for r in e.selection)))
         tbl.add_slot("body-cell-menu", row_menu)

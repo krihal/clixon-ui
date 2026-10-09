@@ -11,7 +11,7 @@ from . import diffview, views
 from .client import RestconfError
 from .formdata import Lookup, entry_from_json, service_to_json, validate
 from .forms import render_children
-from .style import BTN, BTN_BAR
+from .style import BTN, BTN_BAR, BTN_TOOLBAR
 from .tables import RAIL_SERVICE, data_table, page_column
 from .schema import Node, Schema, load_schema
 from .servicechanges import changed_instances
@@ -339,12 +339,12 @@ async def service_type_page(qname: str):
     rows.sort(key=lambda r: r["key"])
 
     with page_column():
-        with ui.row().classes("w-full items-center"):
+        with ui.row().classes("w-full items-center h-11 shrink-0"):
             ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/services")).props("flat round dense")
             ui.label(svc.name).classes("text-2xl")
             ui.label(f"{len(rows)} instances").classes("mut")
-            ui.space()
-            flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("w-56")
+
+        with ui.row().classes("w-full items-center gap-3"):
             ui.button("Commit diff", icon="preview",
                       on_click=lambda: commit_diff_dialog(
                           "Device diff for changed services", "Running all services whose configuration has changed in candidate")
@@ -357,8 +357,9 @@ async def service_type_page(qname: str):
 
             ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN).tooltip(
                 "Push every service whose configuration changed in the candidate to the devices and commit")
-            ui.button(f"New {svc.name}", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
-                      ).props("dense no-caps no-wrap").classes(BTN)
+            flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
+            ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
+                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
 
         table = data_table(
             [{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True, "classes": "name"},
@@ -559,12 +560,12 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
             "Show what this would change on the devices, without saving. Nothing is pushed.")
         ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_click).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
             "Push this service to the devices and commit. You are asked to confirm first.")
-        if editing:
-            ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip(
-                "Delete this instance (from the candidate, or from the devices too)")
-            ui.button("Duplicate", icon="content_copy",
-                      on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
-                      ).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip("Create a new instance with the same settings")
+        # always shown (disabled for a new instance) so every button keeps its place
+        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip(
+            "Delete this instance (from the candidate, or from the devices too)").set_enabled(editing)
+        ui.button("Duplicate", icon="content_copy",
+                  on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
+                  ).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip("Create a new instance with the same settings").set_enabled(editing)
         ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("outline no-caps no-wrap").classes(BTN_BAR)
 
 

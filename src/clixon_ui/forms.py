@@ -24,12 +24,14 @@ def _hint(c: Node) -> str:
 
 
 @contextmanager
-def field_row(name: str, required: bool) -> Iterator[ui.label]:
-    """Label on the left, input on the right: `name *` in a fixed-width column, widgets go in the right column."""
-    with ui.row().classes("w-full items-start no-wrap gap-3"):
+def field_row(name: str, required: bool, fill: bool = False) -> Iterator[ui.label]:
+    """Label on the left, input on the right: `name *` in a fixed-width column, widgets go in the right column.
+    `fill` makes the row take all remaining height of the (flex column) form, for big text areas."""
+    with ui.row().classes("w-full no-wrap gap-3 " + ("items-stretch grow" if fill else "items-start")).style(
+            "min-height:300px" if fill else ""):
         star = ' <span class="err-tx">*</span>' if required else ""
         lab = ui.html(f"{escape(name)}{star}").classes("w-40 shrink-0 pt-2 text-sm font-medium break-words")
-        with ui.column().classes("grow min-w-0 gap-0"):
+        with ui.column().classes("grow min-w-0 gap-0" + (" fill-col" if fill else "")):
             yield lab
 
 
@@ -225,10 +227,10 @@ def render_anydata(c: Node, data: dict, touch: Touch) -> None:
         bad.pop(c.name, None)
         _set(data, c.name, json.loads(e.value) if (e.value or "").strip() else None, touch)
 
-    with field_row(c.name, c.mandatory) as lab:
+    with field_row(c.name, c.mandatory, fill=True) as lab:
         el = ui.textarea(value=text, validation=check, on_change=changed).props(
-            'outlined input-style="min-height:240px;font-family:var(--mono);font-size:13px;line-height:1.5"').classes("w-full")
-        _hintprops(el, c, lab)
+            'outlined input-style="font-family:var(--mono);font-size:13px;line-height:1.5"').classes("w-full fill-field")
+        el.props("outlined dense")  # no hint or tooltip: the YANG text is long and only gets in the way here
 
 
 # ------------------------------------------------------------------ structure
