@@ -68,12 +68,13 @@ def _secs(tr: dict) -> str:
         return ""
 
 
-async def commit_diff_dialog(title: str, what: str, instance: str | None = None, note: str = "", after=None) -> None:
+async def commit_diff_dialog(title: str, what: str, instance: str | None = None, note: str = "", after=None, commit=None) -> None:
     """Run service actions on the candidate (nothing pushed), showing progress, then the per-device diff.
 
     `after` is an async cleanup run as soon as the services finished (before results are shown).
     `what` describes in words which services run; `instance` is a controller service-instance
-    (force re-apply of that one) or None (run all services whose config changed)."""
+    (force re-apply of that one) or None (run all services whose config changed).
+    `commit` (async, optional) adds a Commit button: it closes this dialog and starts the commit flow."""
     steps = ("INIT", "ACTIONS", "RESOLVED", "DONE")
     with ui.dialog().props("persistent") as wait, ui.card().classes("w-[460px]"):
         ui.label("Running services").classes("text-lg")
@@ -132,7 +133,11 @@ async def commit_diff_dialog(title: str, what: str, instance: str | None = None,
             ui.label(f"Service run failed: {reason.strip()}").classes("err-tx whitespace-pre-wrap")
         with ui.row():
             ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-            ui.button("Go to Diff / Commit", icon="difference", on_click=lambda: ui.navigate.to("/commit")).props("outline no-caps no-wrap").classes(BTN)
+            if commit and ok:
+                async def do_commit() -> None:
+                    d.close()
+                    await commit()
+                ui.button("Commit", icon="rocket_launch", color="negative", on_click=do_commit).props("no-caps no-wrap").classes(BTN)
     d.open()
 
 
@@ -344,16 +349,18 @@ async def service_type_page(qname: str):
             ui.label(svc.name).classes("text-2xl")
             ui.label(f"{len(rows)} instances").classes("mut")
 
+        async def commit_changed() -> None:
+            client = ui.context.client
+            if await commit_flow("all changed services", None):
+                views.reload_page(client)
+
         with ui.row().classes("w-full items-center gap-3"):
             ui.button("Commit diff", icon="preview",
                       on_click=lambda: commit_diff_dialog(
-                          "Device diff for changed services", "Running all services whose configuration has changed in candidate")
+                          "Device diff for changed services", "Running all services whose configuration has changed in candidate",
+                          commit=commit_changed)
                       ).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
                 "Run service actions on the candidate and show the device diff. Nothing is pushed.")
-            async def commit_changed() -> None:
-                client = ui.context.client
-                if await commit_flow("all changed services", None):
-                    views.reload_page(client)
 
             ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN).tooltip(
                 "Push every service whose configuration changed in the candidate to the devices and commit")
@@ -378,14 +385,15 @@ async def service_type_page(qname: str):
               <q-btn flat dense round size="md" icon="content_copy" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
             </q-td>""")
-        table.on("diff", lambda e: commit_diff_dialog(
-            f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
-            views.client.service_instance(svc.name, svc.keys[0], e.args)))
         async def commit_row(key: str) -> None:
             client = ui.context.client
             name = f"{svc.name} '{key}'"
             if await commit_flow(name, views.client.service_instance(svc.name, svc.keys[0], key), own=name):
                 views.reload_page(client)
+
+        table.on("diff", lambda e: commit_diff_dialog(
+            f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
+            views.client.service_instance(svc.name, svc.keys[0], e.args), commit=lambda: commit_row(e.args)))
 
         table.on("commit", lambda e: commit_row(e.args))
         table.on("dup", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(e.args, safe='')}"))
@@ -540,12 +548,12 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         title, what = f"Device diff for {svc.name} '{k}'", f"Re-applying service {svc.name} '{k}' (force)"
         inst = views.client.service_instance(svc.name, key_leaf, k)
         if editing and not dirty["v"]:
-            await commit_diff_dialog(title, what, inst)  # nothing to apply, candidate untouched
+            await commit_diff_dialog(title, what, inst, commit=commit_click)  # nothing to apply, candidate untouched
             return
         if not await write(k):
             return
 
-        await commit_diff_dialog(title, what, inst, after=lambda: revert_edit(k),
+        await commit_diff_dialog(title, what, inst, after=lambda: revert_edit(k), commit=commit_click,
                                  note="Your edits were applied temporarily to compute this diff and then reverted; the candidate is unchanged.")
 
     async def delete_here() -> None:
