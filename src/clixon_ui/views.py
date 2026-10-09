@@ -44,7 +44,7 @@ STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 def menu_route(path: str) -> str:
     """Which menu entry a URL belongs to."""
     p = path.split("?")[0].rstrip("/") or "/"
-    for prefix, route in (("/services", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
+    for prefix, route in (("/services", "/services"), ("/service-properties", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
                           ("/templates", "/templates"), ("/network", "/network"), ("/commit", "/commit"),
                           ("/transactions", "/transactions"), ("/rpc", "/rpc")):
         if p == prefix or p.startswith(prefix + "/"):

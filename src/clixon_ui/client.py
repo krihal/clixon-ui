@@ -276,6 +276,19 @@ class ClixonClient:
         """Create or replace one service instance in the candidate datastore."""
         await self._request("PUT", self._service_path(module, name, key), json=body)
 
+    @staticmethod
+    def _property_path(module: str, name: str, key: str | None = None) -> str:
+        path = f"/ds/ietf-datastores:candidate/{NS}:services/properties/{module}:{name}"
+        # composite keys are comma separated; each part is escaped on its own
+        return path + (f"={','.join(quote(k, safe='') for k in key.split(','))}" if key is not None else "")
+
+    async def put_property(self, module: str, name: str, body: dict, key: str | None = None) -> None:
+        """Create or replace one `services/properties` container, or (with `key`) one entry of a property list."""
+        await self._request("PUT", self._property_path(module, name, key), json=body)
+
+    async def delete_property(self, module: str, name: str, key: str | None = None) -> None:
+        await self._request("DELETE", self._property_path(module, name, key))
+
     async def delete_service(self, module: str, name: str, key: str) -> None:
         await self._request("DELETE", self._service_path(module, name, key))
 

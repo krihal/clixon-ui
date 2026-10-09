@@ -22,6 +22,7 @@ ROUTES = {
     "/services": service_views.services_overview,
     "/services/{qname}": service_views.service_type_page,
     "/services/{qname}/form": service_views.service_form_page,
+    "/service-properties/{qname}": service_views.property_form_page,
     "/network": network_views.network_page,
     "/commit": views.commit_page,
     "/transactions": views.transactions_page,

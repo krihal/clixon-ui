@@ -114,6 +114,25 @@ def service_to_json(node: Node, data: dict, preserved: dict | None = None) -> di
     return {f"{node.module}:{node.name}": [{**entry_to_json(node, data), **(preserved or {})}]}
 
 
+def property_to_json(node: Node, data: dict) -> dict:
+    """Body for PUT .../services/properties/<module>:<container>. For a list property `data` is
+    {name: [entries]} and the result shows the whole list (it is written entry by entry, see `property_entries`)."""
+    if node.kind == "list":
+        return {f"{node.module}:{node.name}": [entry_to_json(node, e) for e in data.get(node.name, []) if e]}
+    return {f"{node.module}:{node.name}": entry_to_json(node, data)}
+
+
+def property_key(node: Node, entry: dict) -> str:
+    """Key of a list entry as used in the RESTCONF path (composite keys are comma separated)."""
+    return ",".join(str(entry.get(k, "")) for k in node.keys)
+
+
+def property_entries(node: Node, data: dict) -> dict[str, dict]:
+    """List property: {key: PUT body} for every entry of the form."""
+    return {property_key(node, e): {f"{node.module}:{node.name}": [entry_to_json(node, e)]}
+            for e in data.get(node.name, []) if e}
+
+
 # ------------------------------------------------------------------ leafref lookup
 class Lookup:
     """Resolves absolute leafref paths against a synthetic tree {'devices':…, 'services':…}."""

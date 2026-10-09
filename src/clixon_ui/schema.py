@@ -200,6 +200,22 @@ class Schema:
             out["device"].children = [c for c in out["device"].children if c.name != "config"]
         return out
 
+    def properties(self) -> list[Node]:
+        """Nodes augmented into /services/properties: settings shared by all instances of a service type.
+
+        Read from the augment statements themselves: the controller's own properties container is empty and
+        pyang does not always copy augments made with an unprefixed `properties` step into it."""
+        out: list[Node] = []
+        for m in self.ctx.modules.values():
+            for a in m.search("augment"):
+                if a.arg.rstrip("/").endswith("services/properties"):
+                    out += [n for c in getattr(a, "i_children", []) if (n := _convert(c)) and n.kind in ("container", "list")]
+        return sorted(out, key=lambda n: n.name)
+
+    def property(self, qname: str) -> Node | None:
+        mod, _, name = qname.rpartition(":")
+        return next((p for p in self.properties() if p.name == name and (not mod or p.module == mod)), None)
+
     def service(self, qname: str) -> Node | None:
         """qname = 'module:name' or just name."""
         mod, _, name = qname.rpartition(":")

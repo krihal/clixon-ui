@@ -9,7 +9,8 @@ from nicegui import ui
 
 from . import diffview, views
 from .client import RestconfError
-from .formdata import Lookup, entry_from_json, service_to_json, validate
+from .formdata import (Lookup, entry_from_json, property_entries, property_key, property_to_json, service_to_json,
+                       validate)
 from .forms import render_children
 from .style import BTN, BTN_BAR, BTN_TOOLBAR
 from .tables import RAIL_SERVICE, data_table, page_column
@@ -324,6 +325,18 @@ async def services_overview():
                     ui.label(svc.name).classes("text-lg font-medium")
                 ui.label(f"{n} instance{'s' if n != 1 else ''}").classes("text-gray-400")
                 ui.label(svc.description or svc.module).classes("text-xs text-gray-500 line-clamp-2")
+    if props := schema.properties():
+        ui.label("Properties").classes("text-lg mt-4")
+        ui.label("Settings shared by all instances of a service type.").classes("mut")
+        with ui.element("div").classes("w-full gap-4 mt-2 grid").style(
+                "grid-template-columns:repeat(auto-fill,minmax(250px,1fr))"):
+            for p in props:
+                with ui.card().classes("w-full h-36 cursor-pointer hover:border-primary overflow-hidden").on(
+                        "click", lambda p=p: ui.navigate.to(f"/service-properties/{quote(_qname(p))}")):
+                    with ui.row().classes("items-center w-full"):
+                        ui.icon("tune").classes("text-primary")
+                        ui.label(p.name).classes("text-lg font-medium")
+                    ui.label(p.description or p.module).classes("text-xs text-gray-500 line-clamp-3")
 
 
 async def service_type_page(qname: str):
@@ -571,12 +584,86 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         ui.button("Duplicate", icon="content_copy",
                   on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
                   ).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip("Create a new instance with the same settings").set_enabled(editing)
-        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(svc, data, preserved)).props("outline no-caps no-wrap").classes(BTN_BAR)
+        ui.button("Show JSON", icon="data_object", on_click=lambda: _show_json(service_to_json(svc, data, preserved))).props("outline no-caps no-wrap").classes(BTN_BAR)
 
 
-def _show_json(svc: Node, data: dict, preserved: dict) -> None:
+async def property_form_page(qname: str):
+    """Edit one `services/properties` container. Saved to the candidate; services pick it up on the next commit."""
+    qname = unquote(qname)
+    schema = await _prologue()
+    if schema is None:
+        return
+    prop = schema.property(qname)
+    if prop is None:
+        ui.label(f"Unknown service property {qname}").classes("text-negative")
+        return
+    services = await views.guarded(views.client.candidate_services()) or {}
+    lookup = await _load_lookup(services)
+    current = (services.get("properties") or {})
+    found = next((v for k, v in current.items() if k.rpartition(":")[2] == prop.name), None)
+    is_list = prop.kind == "list"
+    # a list property is edited as one list inside a holder container; a container property directly
+    holder = Node(kind="container", name="properties", module=prop.module, children=[prop]) if is_list else prop
+    stored = [e for e in (found if isinstance(found, list) else [found] if found else []) if isinstance(e, dict)]
+    data = ({prop.name: [entry_from_json(prop, e) for e in stored]} if is_list
+            else entry_from_json(prop, found) if isinstance(found, dict) else {})
+    old_keys = {property_key(prop, entry_from_json(prop, e)) for e in stored} if is_list else set()
+
+    with page_column():
+        head = ui.column().classes("w-full gap-1 shrink-0")
+        body = ui.column().classes("w-full gap-3 grow overflow-auto pr-2").style("min-height:0")
+        footer = ui.row().classes("w-full items-center gap-3 shrink-0 py-3 border-t line")
+    with head:
+        with ui.row().classes("w-full items-center"):
+            ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/services")).props("flat round dense")
+            ui.label(f"Properties: {prop.name}").classes("text-2xl")
+        if prop.description:
+            ui.label(prop.description).classes("mut")
+        status = ui.label().classes("text-sm text-warning")
+
+    def touch() -> None:
+        status.set_text("Unsaved changes")
+
+    with body:
+        render_children(holder, data, lookup, touch)
+
+    async def save() -> None:
+        errs = validate(holder, data, lookup)
+        if errs:
+            with ui.dialog() as d, ui.card():
+                ui.label("Fix these before saving").classes("text-lg")
+                for e in errs[:30]:
+                    ui.label("• " + e).classes("text-sm err-tx")
+                ui.button("OK", on_click=d.close).props("no-caps no-wrap").classes(BTN)
+            d.open()
+            return
+        try:
+            if is_list:
+                entries = property_entries(prop, data)
+                for k, body_ in entries.items():
+                    await views.client.put_property(prop.module, prop.name, body_, k)
+                for k in old_keys - entries.keys():
+                    await views.client.delete_property(prop.module, prop.name, k)
+                old_keys.clear()
+                old_keys.update(entries)
+            else:
+                await views.client.put_property(prop.module, prop.name, property_to_json(prop, data))
+        except RestconfError as e:
+            ui.notify(f"Controller rejected the change: {e}", type="negative", multi_line=True, close_button=True, timeout=0)
+            return
+        status.set_text("Saved to candidate")
+        ui.notify(f"Saved properties {prop.name} to candidate", type="positive")
+
+    with footer:
+        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+            "Save to the candidate datastore. Nothing is pushed to the devices.")
+        ui.button("Show JSON", icon="data_object",
+                  on_click=lambda: _show_json(property_to_json(prop, data))).props("outline no-caps no-wrap").classes(BTN_BAR)
+
+
+def _show_json(body: dict) -> None:
     import json
     with ui.dialog() as d, ui.card().classes("w-[700px]"):
-        ui.code(json.dumps(service_to_json(svc, data, preserved), indent=2), language="json").classes("w-full")
+        ui.code(json.dumps(body, indent=2), language="json").classes("w-full")
         ui.button("Close", on_click=d.close).props("no-caps no-wrap").classes(BTN)
     d.open()

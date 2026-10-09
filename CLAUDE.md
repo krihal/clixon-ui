@@ -103,6 +103,11 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   `/static/...` is answered by the page and returns 404.
 - The sub-pages container is made full width in `theme.py` (`.nicegui-sub-pages`); keep it, or pages shrink to content.
 
+## Service properties
+
+- `services/properties` is an empty container in the controller YANG; service modules augment it (`bgp-peer`, `customer` list, ...). pyang does not always copy those augments into it (unprefixed `properties` step), so `Schema.properties()` reads the `augment` statements directly.
+- Pages: cards under "Properties" on `/services`, form at `/service-properties/{qname}` (`service_views.property_form_page`). Container property = one PUT; list property = one PUT/DELETE per entry (`.../properties/mod:list=key`). Save goes to the candidate only; no commit button (services pick the values up on the next commit). Verified against a fake controller only.
+
 ## Service commit / delete flows (`service_views.py`)
 
 - **Commit** = `controller-commit source=candidate push=COMMIT` with `actions=FORCE` + `service-instance` for one
