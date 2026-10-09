@@ -92,7 +92,7 @@ def _devices_panel(d: dict) -> None:
                 with ui.row().classes("w-full items-center py-1 cursor-pointer").on("click", lambda n=name: ui.navigate.to(f"/devices/{n}")):
                     ui.label(name).classes("name")
                     ui.space()
-                    ui.html(f'<span class="pill pill-{state if state in ("OPEN", "CLOSED") else "other"}">{state}</span>')
+                    ui.html(f'<span class="pill pill-{state if state in ("OPEN", "CLOSED", "DISABLED") else "other"}">{state}</span>')
 
 
 def _services_panel(s: dict) -> None:

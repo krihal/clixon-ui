@@ -51,7 +51,7 @@ async def test_get_retries_502_then_succeeds():
         calls.append(1)
         return httpx.Response(502, text="<html><body>502 Bad Gateway</body></html>") if len(calls) < 3 else httpx.Response(200, json=DEVICES)
 
-    assert len(await make(h).devices()) == 2 and len(calls) == 3
+    assert len(await make(h).devices()) == 2 and len(calls) == 4  # 2 failed + state ok + config ok
 
 
 async def test_html_error_is_readable():

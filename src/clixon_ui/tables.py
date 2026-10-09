@@ -6,7 +6,7 @@ from __future__ import annotations
 from nicegui import ui
 
 # Row rail colour (see theme.py): rail-ok / rail-bad / rail-warn, chosen by a JS expression on `row`.
-RAIL_DEVICE = "row['conn-state'] == 'OPEN' ? 'rail-ok' : row['conn-state'] == 'CLOSED' ? 'rail-bad' : 'rail-warn'"
+RAIL_DEVICE = "row['conn-state'] == 'OPEN' ? 'rail-ok' : row['conn-state'] == 'CLOSED' ? 'rail-bad' : row['conn-state'] == 'DISABLED' ? 'rail-off' : 'rail-warn'"
 RAIL_TRANSACTION = ("row.result == 'SUCCESS' ? 'rail-ok' : (row.result == 'FAILED' || row.result == 'ERROR') ? 'rail-bad' : 'rail-warn'")
 
 RAIL_SERVICE = "row.status == 'Deployed' ? 'rail-ok' : 'rail-warn'"  # has the service script written device config yet?

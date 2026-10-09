@@ -130,6 +130,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-table tbody tr td:first-child{box-shadow:inset 3px 0 0 transparent}
 .q-table tbody tr.rail-ok td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
 .q-table tbody tr.rail-bad td:first-child{box-shadow:inset 3px 0 0 var(--err)}
+.q-table tbody tr.rail-off td:first-child{box-shadow:inset 3px 0 0 var(--line-2)}
 .q-table tbody tr.rail-warn td:first-child{box-shadow:inset 3px 0 0 var(--wa)}
 
 .q-tree__node-header-content,.q-tree__node-header-content *{color:var(--tx)!important}
@@ -150,7 +151,7 @@ body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--dan);--q-w
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
 .pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-.pill-OPEN{background:var(--ok-bg);color:var(--ok)}.pill-CLOSED{background:var(--err-bg);color:var(--err)}.pill-other{background:var(--wa-bg);color:var(--wa)}
+.pill-OPEN{background:var(--ok-bg);color:var(--ok)}.pill-CLOSED{background:var(--err-bg);color:var(--err)}.pill-DISABLED{background:var(--line);color:var(--mut)}.pill-other{background:var(--wa-bg);color:var(--wa)}
 /* Dark mode: follows the operating system / browser setting */
 @media (prefers-color-scheme: dark){
 :root{

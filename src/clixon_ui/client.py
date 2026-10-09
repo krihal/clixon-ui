@@ -75,11 +75,16 @@ class ClixonClient:
 
     # -- devices -----------------------------------------------------------
     async def devices(self) -> list[dict]:
-        data = await self.get(f"{NS}:devices?content=nonconfig")
+        # State alone omits devices that have none (DISABLED/CLOSED), so merge the shallow config too.
+        state = await self.get(f"{NS}:devices?content=nonconfig")
+        config = await self.get(f"{NS}:devices?content=config&depth=3")
         found: dict[str, dict] = {}
-        for chunk in _as_list(data.get(f"{NS}:devices", {})):
-            for dev in _as_list(chunk.get("device", [])):
-                found.setdefault(dev["name"], {}).update(dev)
+        for data in (config, state):
+            for chunk in _as_list(data.get(f"{NS}:devices", {})):
+                for dev in _as_list(chunk.get("device", [])):
+                    found.setdefault(dev["name"], {}).update(dev)
+        for dev in found.values():  # no state entry: the controller shows these as DISABLED or CLOSED
+            dev.setdefault("conn-state", "DISABLED" if dev.get("enabled") == "false" else "CLOSED")
         return sorted(found.values(), key=lambda d: d["name"])
 
     async def device_outline(self, name: str) -> dict:

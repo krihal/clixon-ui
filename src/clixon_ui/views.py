@@ -251,7 +251,7 @@ async def devices_page():
             <q-item clickable @click="$parent.$emit('act', {kind:'delete', name:props.row.name})"><q-item-section>Delete</q-item-section></q-item>
           </q-list></q-menu></q-btn></q-td>'''
     state_cell = '''
-        <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'?props.value:'other')">{{props.value}}</span></q-td>'''
+        <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'||props.value=='DISABLED'?props.value:'other')">{{props.value}}</span></q-td>'''
 
     async def refresh():
         try:
