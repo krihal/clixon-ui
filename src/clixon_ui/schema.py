@@ -200,6 +200,13 @@ class Schema:
             out["device"].children = [c for c in out["device"].children if c.name != "config"]
         return out
 
+    def nacm(self) -> Node | None:
+        """The `nacm` container of ietf-netconf-acm (the controller's own access control), config nodes only."""
+        for (name, _), m in self.ctx.modules.items():
+            if name == "ietf-netconf-acm" and (c := m.search_one("container", "nacm")) is not None:
+                return _convert(c)
+        return None
+
     def properties(self) -> list[Node]:
         """Nodes augmented into /services/properties: settings shared by all instances of a service type.
 

@@ -30,6 +30,7 @@ MENU = [
     ("Configuration", [
         ("/services", "Services", "hub"),
         ("/templates", "Templates", "description"),
+        ("/nacm", "Access control", "shield"),
         ("/commit", "Diff / Commit", "difference"),
     ]),
     ("Operations", [
@@ -46,7 +47,7 @@ def menu_route(path: str) -> str:
     p = path.split("?")[0].rstrip("/") or "/"
     for prefix, route in (("/services", "/services"), ("/service-properties", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
                           ("/templates", "/templates"), ("/network", "/network"), ("/commit", "/commit"),
-                          ("/transactions", "/transactions"), ("/rpc", "/rpc")):
+                          ("/transactions", "/transactions"), ("/rpc", "/rpc"), ("/nacm", "/nacm")):
         if p == prefix or p.startswith(prefix + "/"):
             return route
     if p.startswith("/inventory/"):  # the shared inventory form belongs to the list it edits

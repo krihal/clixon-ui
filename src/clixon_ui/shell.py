@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import connection, dashboard, device_views, inventory_views, network_views, rpc_views, service_views, views
+from . import connection, dashboard, device_views, inventory_views, nacm_views, network_views, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
@@ -23,6 +23,7 @@ ROUTES = {
     "/services/{qname}": service_views.service_type_page,
     "/services/{qname}/form": service_views.service_form_page,
     "/service-properties/{qname}": service_views.property_form_page,
+    "/nacm": nacm_views.nacm_page,
     "/network": network_views.network_page,
     "/commit": views.commit_page,
     "/transactions": views.transactions_page,

@@ -210,12 +210,28 @@ def type_error(t: YType | None, v: Any, lookup: Lookup | None = None, path: str 
     return None
 
 
+def _active_children(node: Node, data: dict):
+    """Like data_children, but of a choice only the cases the data selects (a mandatory leaf in a case that
+    is not used must not be reported as missing)."""
+    for c in node.children:
+        if c.kind == "choice":
+            for case in c.children:
+                kids = [case] if case.kind != "case" else case.children
+                holder = Node(kind="case", name=case.name, module=case.module, children=kids)
+                if any(not _empty(data.get(k.name)) for k in data_children(holder)):
+                    yield from _active_children(holder, data)
+        elif c.kind == "case":
+            yield from _active_children(c, data)
+        else:
+            yield c
+
+
 def validate(node: Node, data: dict, lookup: Lookup | None = None, path: str = "") -> list[str]:
     """Validate a form dict against the schema; returns human-readable errors."""
     errs: list[str] = []
     errs += [f"{path + '/' if path else ''}{node.name}/{k}: {m}" for k, m in (data.get("__bad__") or {}).items()]  # invalid JSON editors
     here = f"{path}/{node.name}" if path else node.name
-    for c in data_children(node):
+    for c in _active_children(node, data):
         v = data.get(c.name)
         loc = f"{here}/{c.name}"
         if c.kind == "container":

@@ -108,6 +108,11 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - `services/properties` is an empty container in the controller YANG; service modules augment it (`bgp-peer`, `customer` list, ...). pyang does not always copy those augments into it (unprefixed `properties` step), so `Schema.properties()` reads the `augment` statements directly.
 - Pages: cards under "Properties" on `/services`, form at `/service-properties/{qname}` (`service_views.property_form_page`). Container property = one PUT; list property = one PUT/DELETE per entry (`.../properties/mod:list=key`). Save goes to the candidate only; no commit button (services pick the values up on the next commit). Verified against a fake controller only.
 
+## Access control (NACM, `nacm_views.py`)
+
+- `/nacm` (menu "Access control"): one form for the whole `ietf-netconf-acm:nacm` container (`Schema.nacm()`). Save = PUT of the whole container to the candidate (`client.put_nacm`); Review/Commit reuse the inventory flows (`diff_datastores`, local commit, confirm dialog with a lock-out warning). Verified against the fake controller only.
+- `formdata.validate` only checks mandatory leaves of the *selected* choice case (NACM `rule` has `path` mandatory in one case).
+
 ## Service commit / delete flows (`service_views.py`)
 
 - **Commit** = `controller-commit source=candidate push=COMMIT` with `actions=FORCE` + `service-instance` for one

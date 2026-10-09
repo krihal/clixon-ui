@@ -256,6 +256,25 @@ class ClixonClient:
             else:
                 await self._request("PUT", f"{base}/{name}", json={f"{NS}:{name}": new[name]})
 
+    NACM = "/ds/ietf-datastores:candidate/ietf-netconf-acm:nacm"
+
+    async def nacm(self) -> dict | None:
+        """The candidate's NACM configuration, or None when none is configured."""
+        try:
+            data = await self._request("GET", self.NACM)
+        except Unreachable:
+            raise
+        except RestconfError:
+            return None  # "Instance does not exist"
+        return data.get("ietf-netconf-acm:nacm")
+
+    async def put_nacm(self, body: dict) -> None:
+        """Replace the whole NACM configuration in the candidate."""
+        await self._request("PUT", self.NACM, json={"ietf-netconf-acm:nacm": body})
+
+    async def delete_nacm(self) -> None:
+        await self._request("DELETE", self.NACM)
+
     async def local_commit(self) -> None:
         """Plain NETCONF commit of the controller's own candidate into running (no push to devices)."""
         await self._request("POST", "/operations/ietf-netconf:commit", json={"ietf-netconf:input": {}})
