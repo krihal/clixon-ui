@@ -174,7 +174,7 @@ DIFF_CSS = """
 .dl-add{background:var(--add-bg);color:var(--add);border-left-color:var(--add)}
 .dl-del{background:var(--del-bg);color:var(--del);border-left-color:var(--del)}
 .dl-ctx{color:var(--mut)}
-.dbody{font:12.5px/1.5 var(--mono);background:var(--field-bg);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh;padding:6px 0}
+.dbody{font:12.5px/1.5 var(--mono);display:grid;grid-template-columns:minmax(max-content,1fr);align-content:start;background:var(--field-bg);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh;padding:6px 0}
 """
 
 
