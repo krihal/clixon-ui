@@ -208,16 +208,13 @@ async def commit_flow(name: str, instance: str | None, *, own: str | None = None
 
     secs = diffview.parse(diff)
     others = [c for c in changed_instances(cand, run) if c != own] if instance is not None else []
-    with ui.dialog() as d, ui.card().classes("w-[620px] max-w-full gap-2"):
+    with ui.dialog() as d, ui.card().classes("w-[900px] max-w-full gap-2"):
         ui.label(f"Commit {name}?").classes("text-lg")
         ui.label("This pushes the configuration to the devices below and commits it."
                  if secs else "No device configuration changes. Only the controller's own configuration is committed.").classes("mut")
-        for s_ in secs:
-            with ui.row().classes("items-center gap-2"):
-                ui.icon("dns", size="xs").classes("mut")
-                ui.label(s_.name or "changes")
-                ui.badge(f"+{s_.added}", color="positive").props("outline")
-                ui.badge(f"−{s_.removed}", color="negative").props("outline")
+        if secs:
+            with ui.column().classes("w-full gap-2 overflow-auto").style("max-height:55vh"):
+                diffview.render(diff)
         if others:
             ui.label("The candidate also contains uncommitted changes to other services: " + ", ".join(others[:8])
                      + (f" and {len(others) - 8} more" if len(others) > 8 else "") +
