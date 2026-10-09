@@ -10,7 +10,7 @@ from nicegui import ui
 from . import stats, views
 from .style import BTN
 from .tables import page_column
-from .client import RestconfError
+from .client import RestconfError, Unreachable
 from .service_views import _instances, _qname, get_schema
 from .servicechanges import changed_instances
 
@@ -25,7 +25,10 @@ async def _collect() -> dict:
     got = await asyncio.gather(c.devices(), c.transactions(), c.candidate_services(), c.running_services(),
                                c.inventory(), get_schema(), return_exceptions=True)
     data = dict(zip(names, got))
-    errors = [f"{k}: {v}" for k, v in data.items() if isinstance(v, Exception)]
+    errors = [f"{k}: {v}" for k, v in data.items() if isinstance(v, Exception) and not isinstance(v, Unreachable)]
+    down = any(isinstance(v, Unreachable) for v in data.values())
+    if down:
+        errors = ["controller: unreachable (see the dialog to reconnect)"]
     ok = {k: v for k, v in data.items() if not isinstance(v, Exception)}
     return {"data": ok, "errors": errors}
 

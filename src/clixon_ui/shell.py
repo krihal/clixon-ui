@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import dashboard, device_views, inventory_views, network_views, rpc_views, service_views, views
+from . import connection, dashboard, device_views, inventory_views, network_views, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
@@ -33,5 +33,6 @@ ROUTES = {
 @ui.page("/")
 @ui.page("/{_:path}")
 async def shell():
+    connection.register(ui.context.client)
     views.frame()
     ui.sub_pages(ROUTES)

@@ -11,7 +11,7 @@ from nicegui import app, background_tasks, ui
 from . import diffview, theme
 from .style import BTN, BTN_TOOLBAR
 from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
-from .client import ClixonClient, RestconfError
+from .client import ClixonClient, RestconfError, Unreachable
 
 client: ClixonClient  # set by __init__.main()
 
@@ -149,6 +149,8 @@ async def guarded(coro, ok: str | None = None):
         if ok:
             ui.notify(ok, type="positive")
         return res
+    except Unreachable:
+        pass  # connection.py shows one dialog for all of these
     except RestconfError as e:
         ui.notify(str(e), type="negative", multi_line=True, close_button=True, timeout=8000)
     except TimeoutError:
@@ -249,6 +251,8 @@ async def devices_page():
     async def refresh():
         try:
             devs = await client.devices()
+        except Unreachable:
+            return  # connection.py shows one dialog
         except RestconfError as e:
             ui.notify(str(e), type="negative")
             return

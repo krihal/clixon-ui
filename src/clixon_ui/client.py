@@ -17,6 +17,10 @@ class RestconfError(Exception):
     """RESTCONF error reply (or transport failure)."""
 
 
+class Unreachable(RestconfError):
+    """The controller could not be reached at all (refused, DNS, timeout while connecting)."""
+
+
 def _error_message(resp: httpx.Response) -> str:
     try:
         err = resp.json()["ietf-restconf:errors"]["error"]
@@ -31,6 +35,7 @@ def _error_message(resp: httpx.Response) -> str:
 class ClixonClient:
     def __init__(self, url: str, verify: bool = True, transport: httpx.AsyncBaseTransport | None = None):
         self.url = url.rstrip("/")
+        self.on_unreachable = None  # called with the error each time the controller cannot be reached
         self._http = httpx.AsyncClient(
             base_url=f"{self.url}/restconf",
             verify=verify,
@@ -46,6 +51,11 @@ class ClixonClient:
         for attempt in range(3 if method == "GET" else 1):
             try:
                 resp = await self._http.request(method, path, **kw)
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
+                err = Unreachable(f"Cannot connect to {self.url}: {e or type(e).__name__}")
+                if self.on_unreachable:
+                    self.on_unreachable(err)
+                raise err from e
             except httpx.HTTPError as e:
                 raise RestconfError(f"{type(e).__name__}: {e}") from e
             if resp.status_code not in (502, 503) or attempt == 2 or method != "GET":

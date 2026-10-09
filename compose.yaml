@@ -1,0 +1,18 @@
+# docker compose up -d --build   ->  http://localhost:8080
+services:
+  clixon-ui:
+    build: .
+    image: clixon-ui:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # no login in the UI yet: do not publish it on a shared network without a proxy in front
+    environment:
+      CLIXON_URL: "https://controller.example.net:1443"
+      CLIXON_INSECURE: "1"                    # self-signed certificate on the controller
+      CLIXON_UI_SECRET: "change-me"           # signs the browser session cookie
+    volumes:
+      - nicegui:/home/clixon/.nicegui
+      - yang:/home/clixon/.cache/clixon-ui
+volumes:
+  nicegui:
+  yang:
