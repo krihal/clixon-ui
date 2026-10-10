@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-from nicegui import app, ui
+from nicegui import app, background_tasks, ui
 
 from . import accounts, auth_views, connection, db, device_views, network_views, rpc_views, service_views, shell, views  # noqa: F401  (shell registers the page)
 from .client import ClixonClient
@@ -25,10 +25,13 @@ def main() -> None:
     p.add_argument("--send-user", action="store_true", default=os.environ.get("CLIXON_UI_SEND_USER", "").lower() in ("1", "true", "yes"),
                    help="send the signed-in user name to the controller as X-Forwarded-User and HTTP_AUTHORIZATION (needs nginx: "
                         "fastcgi_param REMOTE_USER $http_x_forwarded_user; transactions otherwise show 'anonymous'); also CLIXON_UI_SEND_USER=1")
+    p.add_argument("--demo", action="store_true", default=os.environ.get("CLIXON_UI_DEMO", "").lower() in ("1", "true", "yes"),
+                   help="run against a built-in fake controller with invented devices (no controller URL needed); any password signs in "
+                        "as 'guest'; the data resets every 30 minutes; also CLIXON_UI_DEMO=1")
     p.add_argument("--reload", action="store_true",
                    help="development mode: restart the server and reload open browser pages when source files change")
     a = p.parse_args()
-    if not a.url:
+    if not a.url and not a.demo:
         p.error("controller URL required (argument or CLIXON_URL)")
     if a.reload and Path(sys.argv[0]).name != "_dev.py":
         # NiceGUI's reloader re-imports the main module and only works for a plain script, not an
@@ -36,9 +39,17 @@ def main() -> None:
         os.execv(sys.executable, [sys.executable, str(Path(__file__).parent / "_dev.py"), *sys.argv[1:]])
     db.init(a.database_url)
     with db.session() as s:
-        accounts.seed_admin(s)
+        if not a.demo:
+            accounts.seed_admin(s)
         secret = os.environ.get("CLIXON_UI_SECRET") or db.secret_key(s)
-    views.client = ClixonClient(a.url, verify=not a.insecure)
+    if a.demo:
+        from . import demo
+        views.client, views.demo_controller = demo.make_client()
+        views.DEMO = True
+        app.on_startup(lambda: background_tasks.create(demo.reset_loop(views.demo_controller), name="demo reset"))
+        a.send_user = True  # transactions then show who acted (guest)
+    else:
+        views.client = ClixonClient(a.url, verify=not a.insecure)
     views.client.write_guard = auth_views.write_guard
     if a.send_user:
         views.client.user_provider = auth_views.current_username

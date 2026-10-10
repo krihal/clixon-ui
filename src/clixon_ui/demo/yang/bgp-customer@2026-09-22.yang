@@ -1,0 +1,267 @@
+submodule bgp-customer {
+    belongs-to bgp {
+	prefix bgp;
+    }
+
+    import ietf-inet-types { prefix inet;  }
+    import clixon-controller { prefix ctrl; }
+
+    include bgp-common;
+
+    revision "2026-09-22" {
+	description "Add multipath.";
+    }
+
+    revision "2025-10-03" {
+	description "Initial revision.";
+    }
+
+    grouping bgp-customer-settings {
+	leaf description  { type string; }
+	leaf as-macro4    { type string; }
+	leaf as-macro6    { type string; }
+	leaf md5-sum      { type string; }
+
+	leaf prefix-limit  { type uint32 { range "1..max"; } }
+	leaf prefix6-limit { type uint32 { range "1..max"; } }
+
+	leaf multipath {
+	    description "Enable BGP multipath for the peering(s) covered by this service instance";
+	    type empty;
+	}
+    }
+
+    augment /ctrl:services {
+	list bgp-customer {
+	    key service-name;
+
+	    leaf service-name {
+		type string;
+	    }
+
+	    leaf as-number {
+		type inet:as-number;
+		mandatory true;
+	    }
+
+	    leaf auto-update {
+		type boolean;
+		default false;
+	    }
+
+	    leaf create-policy {
+		type boolean;
+		default false;
+	    }
+
+	    leaf create-filter {
+		type boolean;
+		default true;
+	    }
+
+	    leaf create-firewall {
+		type boolean;
+		default false;
+	    }
+
+	    leaf-list import-rules {
+		description "Import rules for service";
+		type string;
+		ordered-by user;
+	    }
+
+	    leaf-list export-rules {
+		description "Export rules for service";
+		type string;
+		ordered-by user;
+	    }
+
+	    leaf-list prefix-list {
+		description "Manually updated IPv4 prefix list";
+		must "not(/ctrl:services/bgp:bgp-customer[bgp:service-name != current()/../../bgp:service-name]/bgp:prefix-list = current())" {
+			error-message "IPv4 prefix must be unique across all bgp-customer instances.";
+		}
+		type inet:ipv4-prefix;
+	    }
+
+	    leaf-list prefix-list-v6 {
+		description "Manually updated IPv6 prefix list";
+		type inet:ipv6-prefix;
+	    }
+
+	    leaf prefix-list-delta-limit {
+		description "Percentage limit for maximum automated IPv4 prefix list update";
+		type uint8;
+	    }
+
+	    leaf prefix-list-delta-limit-v6 {
+		description "Percentage limit for maximum automated IPv6 prefix list update";
+		type uint8;
+	    }
+
+	    leaf bfd-minimum-interval {
+		description "Minimum BFD interval";
+		type uint32 { range "1..255000"; }
+	    }
+
+	    uses bgp-customer-settings;
+
+	    list routers {
+		description "Routers that the customer peer on";
+		key router;
+
+		leaf router {
+		    description "Customer router to peer on";
+		    type leafref {
+			path "/ctrl:devices/ctrl:device/ctrl:name";
+			require-instance false;
+		    }
+		}
+
+		leaf logical-system {
+		    description "Logical system to create the customer in.";
+		    type string;
+		}
+
+		leaf md5-sum {
+		    description "MD5 sum for this router (overrides the service md5-sum)";
+		    type string;
+		}
+
+		leaf description  {
+		    type string;
+		}
+
+		leaf-list import-rules {
+		    description "Import rules for router";
+		    type string;
+		    ordered-by user;
+		}
+
+		leaf-list export-rules {
+		    description "Export rules for router";
+		    type string;
+		    ordered-by user;
+		}
+
+		leaf bfd-minimum-interval {
+		    description "Minimum BFD interval";
+		    type uint32 { range "1..255000"; }
+		}
+
+		leaf multipath {
+		    description "Enable BGP multipath for this router, in addition to the service multipath setting";
+		    type empty;
+		}
+
+		list peering {
+		    key ip;
+		    leaf ip {
+			description "Customer IP address(es) for peering";
+			type inet:ip-address;
+		    }
+
+		    leaf description  {
+			type string;
+		    }
+
+		    leaf local-address {
+			description "Local IP address(es) for peering";
+			type inet:ip-address;
+		    }
+
+		    leaf md5-sum {
+			description "MD5 sum for the specific peering session (overrides the service and router md5-sum)";
+			type string;
+		    }
+
+		    leaf-list import-rules {
+			description "Import rules for peering";
+			type string;
+			ordered-by user;
+		    }
+
+		    leaf-list export-rules {
+			description "Export rules for peering";
+			type string;
+			ordered-by user;
+		    }
+
+		    leaf bfd-minimum-interval {
+			description "Minimum BFD interval";
+			type uint32 { range "1..255000"; }
+		    }
+
+		    leaf multipath {
+			description "Enable BGP multipath for this peering, in addition to the service and router multipath settings";
+			type empty;
+		    }
+		}
+	    }
+
+	    uses ctrl:created-by-service;
+	}
+    }
+
+    // Properties
+    augment /ctrl:services/properties {
+	container bgp-customer {
+	    leaf as-number {
+		description "AS number.";
+		type inet:as-number;
+	    }
+
+	    leaf bgp-base {
+		description "BGP base prefix.";
+		type string;
+	    }
+
+	    leaf bgp-core-community {
+		description "BGP core community.";
+		type string;
+	    }
+
+	    leaf bgp-blackhole-community {
+		description "BGP blackhole community.";
+		type string;
+	    }
+
+	    leaf bgp-upstream-blackhole-community {
+		description "BGP upstream blackhole community.";
+		type string;
+	    }
+
+	    leaf bgp-group {
+		description "The name of the customer BGP group.";
+		type string;
+	    }
+
+	    leaf bgp-group-ipv6 {
+		description "The name of the customer IPv6 BGP group.";
+		type string;
+	    }
+
+	    leaf irr-database {
+		description "Internet Routing Registry database host (e.g., whois.radb.net or rr.ntt.net)";
+		type string;
+	    }
+
+	    leaf-list irr-sources {
+		description "Source database to filter for in IRR lookup (e.g., RIPE, APNIC, RADB)";
+		type string;
+	    }
+
+	    leaf prefix-list-delta-limit {
+		description "Percentage limit for maximum automated IPv4 prefix list update";
+		type uint8;
+	    }
+
+	    leaf prefix-list-delta-limit-v6 {
+		description "Percentage limit for maximum automated IPv6 prefix list update";
+		type uint8;
+	    }
+	}
+    }
+
+}
+

@@ -101,7 +101,7 @@ def login_page() -> None:
     def submit() -> None:
         try:
             with db.session() as s:
-                user = accounts.authenticate(s, name.value, password.value)
+                user = accounts.seed_guest(s) if views.DEMO else accounts.authenticate(s, name.value, password.value)
         except AccountError as e:
             error.set_text(str(e))
             password.set_value("")
@@ -113,6 +113,8 @@ def login_page() -> None:
         ui.html('<img src="/static/img/clixon-logo.png" alt="Clixon" style="height:44px;display:block">')
         with ui.card().classes("w-[360px] gap-3 p-6"):
             ui.label("Sign in").classes("text-xl")
+            if views.DEMO:
+                ui.label("This is a demo with fake devices. Type anything, or just press Sign in.").classes("mut text-sm")
             name = ui.input("User name").props("outlined dense autofocus").classes("w-full")
             password = _password_input("Password")
             error = ui.label().classes("err-tx text-sm")

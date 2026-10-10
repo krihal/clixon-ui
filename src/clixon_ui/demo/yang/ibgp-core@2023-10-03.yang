@@ -1,0 +1,40 @@
+module ibgp-core {
+    namespace "http://nordu.net/ns/clixon/ibgp-core";
+    prefix "ibgp-core";
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2023-10-03" {
+	description "Initial revision";
+    }
+
+    augment "/ctrl:services" {
+	list ibgp-core {
+	    key service-name;
+
+	    leaf service-name {
+		type string;
+		description "Name of the service";
+	    }
+
+	    description "iBGP core configuration";
+
+	    leaf-list devices {
+		description "Devices to create the filter on";
+		type leafref {
+		    path "/ctrl:devices/ctrl:device/ctrl:name";
+		}
+		min-elements 0;
+	    }
+
+	    leaf-list device-groups {
+		description "Device groups to create the filter on";
+		type leafref {
+		    path "/ctrl:devices/ctrl:device-group/ctrl:name";
+		}
+		min-elements 0;
+	    }
+	    uses ctrl:created-by-service;
+	}
+    }
+}

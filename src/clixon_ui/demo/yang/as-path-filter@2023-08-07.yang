@@ -1,0 +1,72 @@
+module as-path-filter {
+    namespace "http://nordu.net/ns/clixon/as-path-filter";
+    prefix as-path-filter;
+
+    import ietf-inet-types { prefix inet; }
+    import ietf-yang-types { prefix ietf; }
+    import clixon-controller { prefix ctrl; }
+
+    revision 2023-08-07{
+        description "Initial prototype";
+    }
+
+    augment "/ctrl:services" {
+        list as-path-filter {
+            key service-name;
+
+            leaf service-name {
+                type string;
+            }
+
+            description "AS Path Filter Service";
+            
+            leaf filter-name {
+                description "Filter name on the device.";
+                type string;
+                mandatory true;
+            }
+
+            leaf-list manual-as-numbers {
+                description "Manually added AS numbers";
+                type inet:as-number;
+            }
+
+            leaf as-macro {
+                description "AS Macro to generate the filter from";
+                type string;
+            }
+
+            leaf-list irr-sources {
+                description "Source IRR for filter data (e.g., RIPE, APNIC, RADB)";
+                type string;
+            }
+
+            leaf irr-host {
+                type string;
+                description "Host used for bgpq query";
+            }
+
+            leaf-list devices {
+                type string;
+                description "Devices to create the filter on";
+                min-elements 0;
+            }
+
+            leaf-list device-groups {
+                description "Device groups to create the filter on";
+                type leafref {
+                    path "/ctrl:devices/ctrl:device-group/ctrl:name";
+                }
+                min-elements 0;
+            }
+
+            leaf auto-update {
+                type boolean;
+                description "For automatic updates set True";
+                default true;
+            }
+
+	    uses ctrl:created-by-service;
+        }
+    }
+}

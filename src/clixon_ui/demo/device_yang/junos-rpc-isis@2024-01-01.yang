@@ -1,0 +1,21 @@
+module junos-rpc-isis {
+    namespace "http://yang.juniper.net/junos/rpc/isis";
+    prefix jri;
+
+    revision 2024-01-01 {
+        description "Demo subset.";
+    }
+
+    rpc get-isis-interface-information {
+        description "Show IS-IS interface information";
+    }
+
+    rpc get-isis-adjacency-information {
+        description "Show IS-IS adjacencies";
+        input {
+            leaf detail {
+                type empty;
+            }
+        }
+    }
+}

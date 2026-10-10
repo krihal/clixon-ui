@@ -1,0 +1,33 @@
+module junos-rpc-system {
+    namespace "http://yang.juniper.net/junos/rpc/system";
+    prefix jrs;
+
+    revision 2024-01-01 {
+        description "Demo subset.";
+    }
+
+    rpc get-system-information {
+        description "Show system information (hostname, model, Junos version)";
+        input {
+            leaf brief {
+                type empty;
+            }
+        }
+    }
+
+    rpc get-system-uptime-information {
+        description "Show time since the system was started";
+    }
+
+    rpc request-system-reboot {
+        description "Reboot the system";
+        input {
+            leaf in {
+                type string;
+            }
+            leaf message {
+                type string;
+            }
+        }
+    }
+}

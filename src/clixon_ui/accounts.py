@@ -34,6 +34,19 @@ def seed_admin(db: Session) -> None:
         db.commit()
 
 
+GUEST_USERNAME = "guest"
+
+
+def seed_guest(db: Session) -> User:
+    """Demo mode: the one account every visitor signs in as (any password works). Not an admin, may change things."""
+    user = get(db, GUEST_USERNAME)
+    if user is None:
+        user = User(username=GUEST_USERNAME, password_hash=hash_password(temporary_password()), must_change_password=False)
+        db.add(user)
+        db.commit()
+    return user
+
+
 def get(db: Session, username: str) -> User | None:
     return db.scalars(select(User).where(User.username == normalize(username))).first()
 

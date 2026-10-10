@@ -1,0 +1,38 @@
+module junos-rpc-chassis {
+    namespace "http://yang.juniper.net/junos/rpc/chassis";
+    prefix jrc;
+
+    revision 2024-01-01 {
+        description "Demo subset.";
+    }
+
+    rpc get-chassis-inventory {
+        description "Show chassis hardware inventory";
+        input {
+            leaf detail {
+                type empty;
+            }
+        }
+    }
+
+    rpc get-interface-information {
+        description "Show interface status and statistics";
+        input {
+            leaf terse {
+                type empty;
+            }
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+
+    rpc request-chassis-routing-engine-master {
+        description "Switch routing engine mastership";
+        input {
+            leaf switch {
+                type empty;
+            }
+        }
+    }
+}

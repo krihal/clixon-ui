@@ -39,6 +39,7 @@ uv run pytest -q
 | `rpcutil.py` | Pure: template variables, read-only checks, CLI command -> RPC request |
 | `diffview.py` | Pure parser + renderer for per-device diffs |
 | `tables.py` | `data_table()` shared table style; `page_column()`; row-rail expressions |
+| `demo/` | `--demo` mode: fake controller in-process (`controller.py`, `netconf.py`, `seed.py`, real controller YANG in `yang/`); see `DEMO.md` |
 | `theme.py` | The whole look ("Daylight"): CSS variables + Quasar overrides. `style.py`: button sizes |
 
 Pure modules (`formdata`, `confview`, `rpcutil`, `diffview`, `rpcschema.parse_module`) have unit tests in `tests/`.
@@ -189,3 +190,11 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - Never PUT an existing device (wipes mounted `config`): `client.device_update` PUTs/DELETEs one top-level setting at a time. Read device entries with `depth=3`.
 - After a device commit the UI offers Open/Reconnect.
 - Verified only against the fake controller; not yet against a live controller.
+
+## Demo mode (`--demo`, see DEMO.md)
+
+- The UI only talks RESTCONF, so demo mode swaps the transport: `ClixonClient(..., transport=ASGITransport(fake_app))`. No page code knows about it; keep it that way.
+- The fake controller is a RESTCONF subset made to fit what `client.py` calls. A new client call needs a matching handler in `demo/controller.py` (and a test in `tests/test_demo.py`).
+- Login ignores the credentials and signs in as `guest`; no admin account is seeded. Data is shared, in memory, reset every 30 min.
+- `demo/yang/` is a copy of the controller's YANG (from `~/.cache/clixon-ui/<hash>/`). Refresh it from there if the real modules change. It contains the SUNET service modules.
+- `access.READ_OPERATIONS` has `get-schema`: without it a cold schema cache makes the startup preload fail with "You are not signed in".

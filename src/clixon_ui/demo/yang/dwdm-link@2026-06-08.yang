@@ -1,0 +1,108 @@
+module dwdm-link {
+
+    namespace "http://nordu.net/ns/clixon/dwdm-link";
+    prefix "dwdm-link";
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-06-08" {
+	description "Initial revision. DWDM core link between two routers.";
+    }
+
+    typedef tx-power {
+	description "Optical transmit power in dBm.";
+	type decimal64 {
+	    fraction-digits 2;
+	}
+    }
+
+    grouping endpoint {
+	description "One end of a DWDM link.";
+
+	leaf device {
+	    description "Router at this end of the link";
+	    type leafref {
+		path "/ctrl:devices/ctrl:device/ctrl:name";
+	    }
+	    mandatory true;
+	}
+
+	leaf interface {
+	    description "Physical interface on the device (e.g. et-0/0/18)";
+	    type string;
+	    mandatory true;
+	}
+
+	leaf description {
+	    description
+		"Interface description for this end, given as '<label> <suffix>'.
+		 The service inserts the physical-port token, producing
+		 '<label>-phy<N> <suffix>' (N is 1-based; clear channel = phy1,
+		 sub-port :k = phy(k+1)).";
+	    type string;
+	}
+
+	leaf tx-power {
+	    description "Transmit power on this end";
+	    type tx-power;
+	}
+
+	leaf bundle {
+	    description
+		"Aggregated-ethernet bundle (e.g. ae1) that the interface, or
+		 all sub-ports when channelised, are members of. Omit if the
+		 interface is not part of a bundle.";
+	    type string;
+	}
+    }
+
+    augment "/ctrl:services" {
+	list dwdm-link {
+	    key service-name;
+
+	    description "A DWDM core link connecting two routers.";
+
+	    leaf service-name {
+		description "Name of the service";
+		type string;
+	    }
+
+	    uses ctrl:created-by-service;
+
+	    leaf wavelength {
+		description "Wavelength of the link in nm (C-band)";
+		type decimal64 {
+		    fraction-digits 2;
+		    range "1528.38..1568.77";
+		}
+		mandatory true;
+	    }
+
+	    leaf speed {
+		description "Link speed";
+		type enumeration {
+		    enum 100g;
+		    enum 200g;
+		    enum 400g;
+		    enum 800g;
+		}
+		mandatory true;
+	    }
+
+	    leaf number-of-sub-ports {
+		description "Number of sub-ports (channelization) on the link";
+		type uint8;
+	    }
+
+	    container device-a {
+		description "First end of the link";
+		uses endpoint;
+	    }
+
+	    container device-b {
+		description "Second end of the link";
+		uses endpoint;
+	    }
+	}
+    }
+}

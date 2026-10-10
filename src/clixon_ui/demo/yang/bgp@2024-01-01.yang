@@ -1,0 +1,13 @@
+module bgp {
+
+    namespace "http://nordu.net/ns/ncs/bgp";
+    prefix bgp;
+
+    include bgp-common;
+    include bgp-customer;
+    include bgp-peer;
+
+    revision "2024-01-01" {
+	description "Initial revision.";
+    }
+}

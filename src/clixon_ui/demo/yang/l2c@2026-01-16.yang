@@ -1,0 +1,88 @@
+module l2c {
+    namespace "http://clicon.org/l2c";
+    prefix l2c;
+
+    import clixon-controller { prefix ctrl; }
+    import interface-customer { prefix ic; }
+
+    revision "2026-01-16" {
+        description "L2C service. Simplified interface-customer-ref to only service-name.";
+    }
+
+    grouping endpoint {
+        description "L2C endpoint configuration";
+
+        container device {
+            description "Router configuration";
+
+            leaf name {
+                description "Router name";
+                mandatory true;
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+            }
+
+            leaf interface {
+                mandatory true;
+                type string;
+                description "logical interface name (e.g., et-0/2/10.100)";
+            }
+        }
+
+        container interface-customer-ref {
+            description "Reference to an interface-customer service";
+
+            leaf service-name {
+                description "interface-customer service name";
+                type leafref {
+                    path "/ctrl:services/ic:interface-customer/ic:service-name";
+                }
+            }
+        }
+    }
+
+    augment /ctrl:services {
+        list l2c {
+            key "service-name";
+            description "L2C service container for a customer";
+
+            leaf service-name {
+                type string;
+                description "Customer/service container name";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Description of the L2C service container";
+            }
+
+            list connection {
+                key "service-id";
+                description "Individual L2C connections for this customer";
+
+                leaf service-id {
+                    type string;
+                    description "Service ID for this L2C connection";
+                }
+
+                leaf description {
+                    type string;
+                    description "Description of this L2C connection";
+                }
+
+                container endpoint-a {
+                    description "First L2C endpoint";
+                    uses endpoint;
+                }
+
+                container endpoint-b {
+                    description "Second L2C endpoint";
+                    uses endpoint;
+                }
+            }
+        }
+    }
+}

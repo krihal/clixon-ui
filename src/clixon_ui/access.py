@@ -8,7 +8,7 @@ ALWAYS = frozenset({"/", "/account"})  # every signed-in user
 ADMIN_ONLY = frozenset({"/admin", "/restconf"})  # /restconf is a raw console that can write anything
 
 # RPCs that only read. controller-commit with push=NONE is the dry run behind "commit diff".
-READ_OPERATIONS = frozenset({"get-config", "get-device-schema", "get-device-config", "datastore-diff", "device-rpc-result"})
+READ_OPERATIONS = frozenset({"get-config", "get-schema","get-device-schema", "get-device-config", "datastore-diff", "device-rpc-result"})
 
 
 @dataclass(frozen=True)

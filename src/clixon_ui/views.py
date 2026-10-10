@@ -15,6 +15,8 @@ from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
 from .client import user_headers, ClixonClient, RestconfError, Unreachable
 
 client: ClixonClient  # set by __init__.main()
+DEMO = False  # set by __init__.main(): fake controller, any password signs in as guest
+demo_controller = None  # the fake controller in demo mode
 
 # Menu sections: (heading, [(route, label, material icon), ...]). Grouped by what the pages are for.
 # /restconf (raw console) is deliberately not listed.
@@ -67,6 +69,13 @@ def menu_route(path: str) -> str:
     return "/"
 
 
+def reset_demo() -> None:
+    """Demo mode: bring the fake controller back to its initial data and rebuild the page."""
+    demo_controller.reset()
+    ui.notify("Demo data reset", type="positive")
+    reload_page()
+
+
 def reload_page(client=None) -> None:
     """Rebuild the current page content in place (a browser reload would rebuild header and menu too).
 
@@ -95,6 +104,9 @@ def frame(access: Access | None = None) -> None:
         ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:36px;display:block"></a>')
         if access:
             ui.space()
+            if DEMO:
+                ui.html('<span class="pill pill-other">Demo: fake devices, reset every 30 minutes</span>')
+                ui.button("Reset now", icon="restart_alt", on_click=reset_demo).props("flat no-caps no-wrap dense").classes("header-link")
             if access.is_admin:
                 ui.button("Admin", icon="admin_panel_settings", on_click=lambda: ui.navigate.to("/admin")).props("flat no-caps no-wrap dense").classes("header-link")
             ui.button(access.username, icon="account_circle", on_click=lambda: ui.navigate.to("/account")).props("flat no-caps no-wrap dense").classes("header-link mr-3")

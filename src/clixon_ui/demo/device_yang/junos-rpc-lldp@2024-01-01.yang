@@ -1,0 +1,17 @@
+module junos-rpc-lldp {
+    namespace "http://yang.juniper.net/junos/rpc/lldp";
+    prefix jrl;
+
+    revision 2024-01-01 {
+        description "Demo subset.";
+    }
+
+    rpc get-lldp-interface-neighbors {
+        description "Show LLDP neighbours, optionally for one interface";
+        input {
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+}
