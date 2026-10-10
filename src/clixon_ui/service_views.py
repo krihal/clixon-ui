@@ -372,11 +372,11 @@ async def service_type_page(qname: str):
                       ).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
                 "Run service actions on the candidate and show the device diff. Nothing is pushed.")
 
-            ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN).tooltip(
+            ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN + " wr").tooltip(
                 "Push every service whose configuration changed in the candidate to the devices and commit")
             flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
             ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
-                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
+                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
 
         table = data_table(
             [{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True, "classes": "name"},
@@ -390,10 +390,10 @@ async def service_type_page(qname: str):
         table.add_slot("body-cell-act", """
             <q-td :props="props" class="row-actions">
               <q-btn flat dense round size="md" icon="visibility" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Commit diff: show what would change on the devices</q-tooltip></q-btn>
-              <q-btn flat dense round size="md" icon="rocket_launch" class="act-commit" @click.stop="$parent.$emit('commit', props.row.key)"><q-tooltip>Commit this service to the devices…</q-tooltip></q-btn>
-              <q-btn flat dense round size="md" icon="edit" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
-              <q-btn flat dense round size="md" icon="content_copy" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
-              <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="rocket_launch" class="wr act-commit" @click.stop="$parent.$emit('commit', props.row.key)"><q-tooltip>Commit this service to the devices…</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="edit" class="wr" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="content_copy" class="wr" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
+              <q-btn flat dense round size="md" icon="delete" class="wr act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
             </q-td>""")
         async def commit_row(key: str) -> None:
             client = ui.context.client
@@ -572,14 +572,14 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
             views.navigate_to(f"/services/{quote(qname)}", client)
 
     with footer:
-        ui.button("Save", icon="save", on_click=lambda: save(False)).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Save", icon="save", on_click=lambda: save(False)).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate datastore. Nothing is pushed to the devices.")
         ui.button("Commit diff", icon="preview", on_click=preview).props("no-caps no-wrap outline").classes(BTN_BAR).tooltip(
             "Show what this would change on the devices, without saving. Nothing is pushed.")
-        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_click).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_click).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Push this service to the devices and commit. You are asked to confirm first.")
         # always shown (disabled for a new instance) so every button keeps its place
-        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Delete this instance (from the candidate, or from the devices too)").set_enabled(editing)
         ui.button("Duplicate", icon="content_copy",
                   on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(key, safe='')}")
@@ -655,7 +655,7 @@ async def property_form_page(qname: str):
         ui.notify(f"Saved properties {prop.name} to candidate", type="positive")
 
     with footer:
-        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate datastore. Nothing is pushed to the devices.")
         ui.button("Show JSON", icon="data_object",
                   on_click=lambda: _show_json(property_to_json(prop, data))).props("outline no-caps no-wrap").classes(BTN_BAR)

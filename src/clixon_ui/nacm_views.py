@@ -151,10 +151,10 @@ async def nacm_page() -> None:
         d.open()
 
     with footer:
-        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate. Nothing takes effect until you commit.")
         ui.button("Review", icon="preview", on_click=review).props("no-caps no-wrap outline").classes(BTN_BAR).tooltip(
             "Show what would change compared to the running configuration, without saving")
-        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save and commit the candidate. You are asked to confirm first.")
         ui.button("Show JSON", icon="data_object", on_click=show_json).props("outline no-caps no-wrap").classes(BTN_BAR)

@@ -127,13 +127,13 @@ def _names(items: list[str], n: int = 4) -> str:
     return ", ".join(items[:n]) + (f" and {len(items) - n} more" if len(items) > n else "")
 
 
-def _alert(kind: str, title: str, detail: str, action: str, on_click) -> None:
+def _alert(kind: str, title: str, detail: str, action: str, on_click, writes: bool = False) -> None:
     """One line saying what needs a decision, with the button that takes it."""
     with ui.row().classes(f"w-full items-center no-wrap gap-3 px-4 py-2 alert-{kind}"):
         ui.icon("warning_amber" if kind == "warn" else "error_outline")
         ui.label(title).classes("font-semibold shrink-0")
         ui.label(detail).classes("grow ellipsis")
-        ui.button(action, on_click=on_click).props("outline no-caps no-wrap dense").classes("w-48 h-9 shrink-0")
+        ui.button(action, on_click=on_click).props("outline no-caps no-wrap dense").classes("w-48 h-9 shrink-0" + (" wr" if writes else ""))
 
 
 async def _open_closed(names: list[str], total: int) -> None:
@@ -156,12 +156,12 @@ def _attention(s: dict) -> None:
     if s.get("pending"):
         items += 1
         _alert("warn", f"{len(s['pending'])} uncommitted change{'s' if len(s['pending']) != 1 else ''}", _names(s["pending"], 3),
-               "Review & commit", lambda: ui.navigate.to("/commit"))
+               "Review & commit", lambda: ui.navigate.to("/commit"), writes=True)
     closed = [n for n, st in s.get("devices", {}).get("attention", []) if st == "CLOSED"]
     if closed:
         items += 1
         _alert("err", f"{len(closed)} device{'s' if len(closed) != 1 else ''} closed", _names(closed), "Open all closed",
-               lambda: _open_closed(closed, s["devices"]["total"]))
+               lambda: _open_closed(closed, s["devices"]["total"]), writes=True)
     failed = s.get("tx", {}).get("failed", 0)
     if failed:
         items += 1

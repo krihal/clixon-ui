@@ -8,13 +8,20 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.20.0",
     "httpx>=0.28.1",
     "nicegui>=3.18.0",
     "pyang>=2.7.1",
+    "sqlalchemy>=2.1.4",
 ]
 
 [project.scripts]
 clixon-ui = "clixon_ui:main"
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.3.6",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]

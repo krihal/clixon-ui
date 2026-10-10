@@ -32,6 +32,11 @@ def is_read_only(config: dict | None) -> bool:
     return rpc_name(config).startswith("get-")
 
 
+def inline_is_read_only(inline: dict | None) -> bool:
+    """Read-only check for an inline RPC body: a get-* RPC or a plain CLI `show` command."""
+    return is_read_only(inline) or (rpc_name(inline) == "command" and is_read_only_cli(str(inline["command"])))
+
+
 def substitute(config: dict, values: dict[str, str]) -> dict:
     """Preview of the RPC with variables filled in (the controller does the real substitution)."""
     text = json.dumps(config)

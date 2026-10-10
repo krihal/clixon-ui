@@ -9,9 +9,10 @@ from datetime import datetime
 from nicegui import app, background_tasks, ui
 
 from . import diffview, theme
+from .access import Access
 from .style import BTN, BTN_TOOLBAR
 from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
-from .client import ClixonClient, RestconfError, Unreachable
+from .client import user_headers, ClixonClient, RestconfError, Unreachable
 
 client: ClixonClient  # set by __init__.main()
 
@@ -42,12 +43,19 @@ POLL_SECONDS = 5  # refresh interval for the Devices and Transactions pages
 STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 
 
+def visible_menu(access: Access | None) -> list[tuple[str, list[tuple[str, str, str]]]]:
+    """MENU without the entries (and then-empty sections) the user may not open."""
+    sections = [(heading, [e for e in entries if access is None or access.can_view(e[0])]) for heading, entries in MENU]
+    return [s for s in sections if s[1]]
+
+
 def menu_route(path: str) -> str:
     """Which menu entry a URL belongs to."""
     p = path.split("?")[0].rstrip("/") or "/"
     for prefix, route in (("/services", "/services"), ("/service-properties", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
                           ("/templates", "/templates"), ("/network", "/network"), ("/commit", "/commit"),
-                          ("/transactions", "/transactions"), ("/rpc", "/rpc"), ("/nacm", "/nacm")):
+                          ("/transactions", "/transactions"), ("/rpc", "/rpc"), ("/nacm", "/nacm"),
+                          ("/admin", "/admin"), ("/account", "/account"), ("/restconf", "/restconf")):
         if p == prefix or p.startswith(prefix + "/"):
             return route
     if p.startswith("/inventory/"):  # the shared inventory form belongs to the list it edits
@@ -76,14 +84,20 @@ def navigate_to(path: str, client=None) -> None:
         ui.navigate.to(path)
 
 
-def frame() -> None:
-    """Header + foldable left drawer. Built once by the shell page; only the content area changes on navigation."""
+def frame(access: Access | None = None) -> None:
+    """Header + foldable left drawer. Built once by the shell page; only the content area changes on navigation.
+    `access` hides the menu entries the user may not open and adds the Admin and user links to the header."""
     theme.apply()
     folded = app.storage.user.setdefault("folded", False)
 
     with ui.header().classes("items-center px-0 gap-2"):
         ui.button(icon="menu", on_click=lambda: toggle()).props("flat round dense").classes("nav-burger").tooltip("Fold/unfold menu")
         ui.html('<a href="/"><img src="/static/img/clixon-logo.png" alt="Clixon" style="height:36px;display:block"></a>')
+        if access:
+            ui.space()
+            if access.is_admin:
+                ui.button("Admin", icon="admin_panel_settings", on_click=lambda: ui.navigate.to("/admin")).props("flat no-caps no-wrap dense").classes("header-link")
+            ui.button(access.username, icon="account_circle", on_click=lambda: ui.navigate.to("/account")).props("flat no-caps no-wrap dense").classes("header-link mr-3")
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
         "width=250 mini-width=56 behavior=desktop"
@@ -112,7 +126,7 @@ def frame() -> None:
 
     with drawer:
         with ui.list().props("dense").classes("w-full pt-2"):
-            for gi, (heading, entries) in enumerate(MENU):
+            for gi, (heading, entries) in enumerate(visible_menu(access)):
                 if gi:
                     dividers.append(ui.separator().classes("menu-divider"))
                 headings.append(ui.label(heading).classes("menu-heading"))
@@ -175,6 +189,15 @@ async def run_many(label: str, starters: dict, limit: int = 8, count: int | None
     parallelism). Shows one progress toast and one summary. Returns {device: transaction or error string}.
     `count` is the number of devices shown in the toasts when one starter covers several (a glob pull)."""
     gate = asyncio.Semaphore(limit)
+    page = ui.context.client  # the user may leave the page while a long pull runs: the caller's slot is gone by then
+
+    def notify(*args, **kw) -> None:
+        if not page.is_deleted:
+            try:
+                with page.layout:
+                    ui.notify(*args, **kw)
+            except RuntimeError:
+                pass  # page closed while the controller was busy
 
     async def one(name: str, start):
         async with gate:
@@ -193,18 +216,21 @@ async def run_many(label: str, starters: dict, limit: int = 8, count: int | None
     try:
         done = dict(await asyncio.gather(*(one(name, st) for name, st in starters.items())))
     finally:
-        n.dismiss()
+        try:
+            n.dismiss()
+        except RuntimeError:
+            pass
     bad = {name: (r if isinstance(r, str) else (r.get("reason") or r.get("result") or "failed").strip())
            for name, r in done.items() if isinstance(r, str) or r.get("result") != "SUCCESS"}
     if count and not bad:
-        ui.notify(f"{label}: {count} of {count} succeeded", type="positive")
+        notify(f"{label}: {count} of {count} succeeded", type="positive")
     elif not bad:
-        ui.notify(f"{label}: {len(done)} of {len(done)} succeeded", type="positive")
+        notify(f"{label}: {len(done)} of {len(done)} succeeded", type="positive")
     else:
         ok = (count or len(done)) - len(bad)
-        ui.notify(f"{label}: {ok} of {count or len(done)} succeeded, {len(bad)} failed\n" +
-                  "\n".join(f"• {name}: {why[:160]}" for name, why in sorted(bad.items())),
-                  type="negative", multi_line=True, close_button=True, timeout=0)
+        notify(f"{label}: {ok} of {count or len(done)} succeeded, {len(bad)} failed\n" +
+               "\n".join(f"• {name}: {why[:160]}" for name, why in sorted(bad.items())),
+               type="negative", multi_line=True, close_button=True, timeout=0)
     return done
 
 
@@ -239,16 +265,16 @@ async def devices_page():
     row_menu = '''
         <q-td :props="props" class="row-actions"><q-btn flat dense round icon="more_horiz">
           <q-menu auto-close><q-list dense style="min-width:150px">
-            <q-item clickable @click="$parent.$emit('act', {kind:'open', name:props.row.name})"><q-item-section>Open</q-item-section></q-item>
-            <q-item clickable @click="$parent.$emit('act', {kind:'close', name:props.row.name})"><q-item-section>Close</q-item-section></q-item>
-            <q-item clickable @click="$parent.$emit('act', {kind:'reconnect', name:props.row.name})"><q-item-section>Reconnect</q-item-section></q-item>
-            <q-item clickable @click="$parent.$emit('act', {kind:'pull', name:props.row.name})"><q-item-section>Pull (sync)</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'open', name:props.row.name})"><q-item-section>Open</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'close', name:props.row.name})"><q-item-section>Close</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'reconnect', name:props.row.name})"><q-item-section>Reconnect</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'pull', name:props.row.name})"><q-item-section>Pull (sync)</q-item-section></q-item>
             <q-item clickable @click="$parent.$emit('act', {kind:'config', name:props.row.name})"><q-item-section>Show configuration</q-item-section></q-item>
             <q-item clickable @click="$parent.$emit('act', {kind:'diff', name:props.row.name})"><q-item-section>Show diff</q-item-section></q-item>
             <q-separator />
-            <q-item clickable @click="$parent.$emit('act', {kind:'edit', name:props.row.name})"><q-item-section>Edit settings</q-item-section></q-item>
-            <q-item clickable @click="$parent.$emit('act', {kind:'copy', name:props.row.name})"><q-item-section>Duplicate</q-item-section></q-item>
-            <q-item clickable @click="$parent.$emit('act', {kind:'delete', name:props.row.name})"><q-item-section>Delete</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'edit', name:props.row.name})"><q-item-section>Edit settings</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'copy', name:props.row.name})"><q-item-section>Duplicate</q-item-section></q-item>
+            <q-item clickable class="wr" @click="$parent.$emit('act', {kind:'delete', name:props.row.name})"><q-item-section>Delete</q-item-section></q-item>
           </q-list></q-menu></q-btn></q-td>'''
     state_cell = '''
         <q-td :props="props"><span :class="'pill pill-'+(props.value=='OPEN'||props.value=='CLOSED'||props.value=='DISABLED'?props.value:'other')">{{props.value}}</span></q-td>'''
@@ -314,17 +340,17 @@ async def devices_page():
             ui.label("Devices").classes("text-2xl")
             summary = ui.label().classes("mut")
         with ui.row().classes("w-full items-center gap-3"):
-            ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-            ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-            ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
-            ui.button("Pull (sync)", icon="cloud_download", on_click=lambda: act("pull")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
+            ui.button("Open", icon="power", on_click=lambda: act("open")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
+            ui.button("Close", icon="power_off", on_click=lambda: act("close")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
+            ui.button("Reconnect", icon="sync_alt", on_click=lambda: act("reconnect")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
+            ui.button("Pull (sync)", icon="cloud_download", on_click=lambda: act("pull")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
             ui.button("Diff selected", icon="difference",
                       on_click=lambda: ui.navigate.to(f"/commit?device={','.join(sorted(selected))}")).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             search = ui.input(placeholder="Search devices…").props("outlined dense clearable").classes("grow min-w-40")
             with search.add_slot("prepend"):
                 ui.icon("search")
             ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(inventory_views.form_url("device"))
-                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
+                      ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
         tbl = data_table(columns, rows, "name", RAIL_DEVICE, selection="multiple",
                          on_select=lambda e: (selected.clear(), selected.update(r["name"] for r in e.selection)))
         tbl.add_slot("body-cell-menu", row_menu)
@@ -395,9 +421,9 @@ async def commit_page(device: str = ""):
     with ui.row().classes("w-full items-center gap-3 sticky bottom-0 bg-page py-3 border-t line") as deploy:
         summary = ui.label().classes("mut")
         ui.space()
-        b_val = ui.button("Validate", icon="fact_check", on_click=lambda: deploy_run("VALIDATE")).props("outline no-caps no-wrap").classes(BTN).tooltip(
+        b_val = ui.button("Validate", icon="fact_check", on_click=lambda: deploy_run("VALIDATE")).props("outline no-caps no-wrap").classes(BTN + " wr").tooltip(
             "Dry-run: validate on the devices without committing")
-        b_com = ui.button("Commit to devices", icon="rocket_launch", on_click=lambda: confirm()).props("no-caps no-wrap color=negative").classes(BTN)
+        b_com = ui.button("Commit to devices", icon="rocket_launch", on_click=lambda: confirm()).props("no-caps no-wrap color=negative").classes(BTN + " wr")
 
     def on_update(tr: dict) -> None:
         st = tr.get("state", "INIT")
@@ -625,7 +651,8 @@ async def raw_page():
 
     async def send():
         try:
-            r = await client._http.request(method.value, path.value, content=body.value or None)
+            r = await client._http.request(method.value, path.value, content=body.value or None,
+                                           headers=user_headers(client.user_provider() or "") if client.user_provider else None)
             out.set_content(f"HTTP {r.status_code}\n{r.text[:200_000]}")
         except Exception as e:
             out.set_content(str(e))

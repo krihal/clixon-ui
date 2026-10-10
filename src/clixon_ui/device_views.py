@@ -55,7 +55,7 @@ async def device_config_page(name: str):
                     async def open_it() -> None:
                         await views.run_tx(client.connection_change(name, "OPEN"), f"Open {name}")
                         views.reload_page()
-                    ui.button("Open device", icon="power", on_click=open_it).props("no-caps no-wrap").classes(BTN)
+                    ui.button("Open device", icon="power", on_click=open_it).props("no-caps no-wrap").classes(BTN + " wr")
             return
         if not cfg:
             ui.label("The controller holds no configuration for this device yet. Pull it from the Devices page.").classes("mut")

@@ -82,7 +82,7 @@ async def _list(kind_key: str, lead=None) -> None:
     with ui.row().classes("w-full items-center gap-3"):
         flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
         ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(form_url(kind_key))
-                  ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
+                  ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
     table = data_table(
         [{"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
          {"name": "descr", "label": "Description", "field": "descr", "align": "left"},
@@ -92,9 +92,9 @@ async def _list(kind_key: str, lead=None) -> None:
     table.bind_filter_from(flt, "value")
     table.add_slot("body-cell-act", """
         <q-td :props="props" class="row-actions">
-          <q-btn flat dense round size="md" icon="edit" @click.stop="$parent.$emit('edit', props.row.name)"><q-tooltip>Edit</q-tooltip></q-btn>
-          <q-btn flat dense round size="md" icon="content_copy" @click.stop="$parent.$emit('dup', props.row.name)"><q-tooltip>Duplicate</q-tooltip></q-btn>
-          <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.name)"><q-tooltip>Delete</q-tooltip></q-btn>
+          <q-btn flat dense round size="md" icon="edit" class="wr" @click.stop="$parent.$emit('edit', props.row.name)"><q-tooltip>Edit</q-tooltip></q-btn>
+          <q-btn flat dense round size="md" icon="content_copy" class="wr" @click.stop="$parent.$emit('dup', props.row.name)"><q-tooltip>Duplicate</q-tooltip></q-btn>
+          <q-btn flat dense round size="md" icon="delete" class="wr act-del" @click.stop="$parent.$emit('del', props.row.name)"><q-tooltip>Delete</q-tooltip></q-btn>
         </q-td>""")
     table.on("edit", lambda e: ui.navigate.to(form_url(kind_key, key=e.args)))
     table.on("rowClick", lambda e: ui.navigate.to(form_url(kind_key, key=e.args[1]["name"])))
@@ -392,14 +392,14 @@ async def inventory_form_page(kind: str, key: str = "", copy: str = "") -> None:
         d.open()
 
     with footer:
-        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate. Nothing takes effect until you commit.")
-        ui.button("Review", icon="preview", on_click=review).props("no-caps no-wrap outline").classes(BTN_BAR).tooltip(
+        ui.button("Review", icon="preview", on_click=review).props("no-caps no-wrap outline").classes(BTN_BAR + " wr").tooltip(
             "Show what would change compared to the running configuration, without saving")
-        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR).tooltip(
+        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save and commit the candidate. You are asked to confirm first.")
         # always shown (disabled for a new entry) so every button keeps its place
-        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR).set_enabled(editing)
+        ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR + " wr").set_enabled(editing)
         ui.button("Duplicate", icon="content_copy", on_click=lambda: ui.navigate.to(form_url(kind_key, copy=key))
                   ).props("outline no-caps no-wrap").classes(BTN_BAR).set_enabled(editing)
         ui.button("Show JSON", icon="data_object", on_click=show_json).props("outline no-caps no-wrap").classes(BTN_BAR)

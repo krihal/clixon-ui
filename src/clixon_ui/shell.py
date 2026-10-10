@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import connection, dashboard, device_views, inventory_views, nacm_views, network_views, rpc_views, service_views, views
+from . import auth_views, connection, dashboard, device_views, inventory_views, nacm_views, network_views, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
@@ -28,13 +28,26 @@ ROUTES = {
     "/commit": views.commit_page,
     "/transactions": views.transactions_page,
     "/rpc": rpc_views.rpc_page,
-    "/restconf": views.raw_page,  # raw RESTCONF console: reachable by URL, deliberately not in the menu
+    "/restconf": views.raw_page,  # raw RESTCONF console: reachable by URL (admins only), deliberately not in the menu
+    "/account": auth_views.account_page,
+    "/admin": auth_views.admin_page,
 }
+ROUTES = {path: auth_views.guarded(build) for path, build in ROUTES.items()}
 
 
 @ui.page("/")
 @ui.page("/{_:path}")
 async def shell():
+    user = auth_views.current_user()
+    if user is None:
+        ui.navigate.to("/login")
+        return
+    if user.must_change_password:
+        auth_views.forced_password_page(user)
+        return
     connection.register(ui.context.client)
-    views.frame()
+    access = auth_views.accounts.access_for(user)
+    if access.view_only:
+        ui.query("body").classes("view-only")  # theme.py hides everything marked .wr (controls that write)
+    views.frame(access)
     ui.sub_pages(ROUTES)

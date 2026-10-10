@@ -257,7 +257,7 @@ async def rpc_page():
                 ui.icon("info", size="sm")
                 ui.label("The controller has no YANG for this device yet. It is fetched the first time the device "
                          "connects: open the device (Devices page), then press Reload.")
-                ui.button("Open device", icon="power", on_click=lambda: open_selected()).props("outline dense no-caps no-wrap").classes(BTN)
+                ui.button("Open device", icon="power", on_click=lambda: open_selected()).props("outline dense no-caps no-wrap").classes(BTN + " wr")
             no_yang.set_visibility(False)
             avail = data_table(
                 [{"name": "name", "label": "RPC", "field": "name", "align": "left", "sortable": True, "classes": "name"},

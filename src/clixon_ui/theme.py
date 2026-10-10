@@ -61,6 +61,9 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-drawer--mini .q-item{padding-left:0!important;justify-content:center}
 .q-header .nav-burger,.q-header .nav-burger .q-icon{color:var(--tx)!important}
 .q-header .nav-burger{margin-left:10px;width:36px;height:36px;min-height:0}
+.q-header .header-link,.q-header .header-link .q-icon{color:var(--tx)!important}
+.q-header .header-link{min-height:36px;padding:0 10px}
+.view-only .wr{display:none!important}
 .q-drawer .q-item .q-icon{font-size:22px;color:var(--nav-tx)}
 .q-drawer .q-item:hover{background:var(--hover)}
 /* selected item is a tab: same colour as the page, full width, merges into the page edge */

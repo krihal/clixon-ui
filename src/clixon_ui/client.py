@@ -3,22 +3,39 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 from typing import Any
 from urllib.parse import quote
 
 import httpx
 
+from .access import is_write
+from .rpcutil import inline_is_read_only, is_read_only
 from .netconfxml import NC, Op, edit_config_body
 
 NS = "clixon-controller"
 JSON = "application/yang-data+json"
 XML = "application/yang-data+xml"
 NS_URI = "http://clicon.org/controller"
+USER_HEADER = "X-Forwarded-User"  # nginx: fastcgi_param REMOTE_USER $http_x_forwarded_user;
+
+
+_read_rpc: contextvars.ContextVar[bool] = contextvars.ContextVar("read_rpc", default=False)
+
+
+def user_headers(user: str) -> dict[str, str]:
+    """Identify the acting user: X-Forwarded-User (nginx -> REMOTE_USER) and a literal HTTP_AUTHORIZATION header.
+    nginx drops headers with underscores unless it has `underscores_in_headers on;` (it then passes HTTP_HTTP_AUTHORIZATION)."""
+    return {USER_HEADER: user, "HTTP_AUTHORIZATION": user}
 
 
 class RestconfError(Exception):
     """RESTCONF error reply (or transport failure)."""
+
+
+class PermissionDenied(RestconfError):
+    """The signed-in user may not change anything (view-only account)."""
 
 
 class Unreachable(RestconfError):
@@ -43,6 +60,8 @@ class ClixonClient:
     def __init__(self, url: str, verify: bool = True, transport: httpx.AsyncBaseTransport | None = None):
         self.url = url.rstrip("/")
         self._namespaces: dict[str, str] | None = None
+        self.user_provider = None  # returns the signed-in user name; sent as X-Forwarded-User so the controller records who acted
+        self.write_guard = None  # called with the error text of a write; raises PermissionDenied when the session may not write
         self.on_unreachable = None  # called with the error each time the controller cannot be reached
         self._http = httpx.AsyncClient(
             base_url=f"{self.url}/restconf",
@@ -56,6 +75,10 @@ class ClixonClient:
         await self._http.aclose()
 
     async def _request(self, method: str, path: str, **kw: Any) -> dict:
+        if self.write_guard and is_write(method, path, kw.get("json"), _read_rpc.get()):
+            self.write_guard()
+        if self.user_provider and (user := self.user_provider()):
+            kw["headers"] = {**kw.get("headers", {}), **user_headers(user)}
         for attempt in range(3 if method == "GET" else 1):
             try:
                 resp = await self._http.request(method, path, **kw)
@@ -173,11 +196,24 @@ class ClixonClient:
                       inline: dict | None = None, variables: dict[str, str] | None = None) -> int | None:
         """Start an RPC (template or inline body) on a device or device group; returns the transaction id."""
         params: dict = {"type": "RPC", "device": device, "device-group": group, "template": template}
+        if self.write_guard:  # a view-only session may still run RPCs that only read
+            if inline is not None:
+                read_only = inline_is_read_only(inline)
+            else:
+                tpl = (await self._request("GET", f"/data/{NS}:devices/rpc-template={quote(template or '', safe='')}")).get(f"{NS}:rpc-template", [{}])
+                read_only = is_read_only(next(iter(_as_list(tpl)), {}).get("config"))
+            token = _read_rpc.set(read_only)
+        else:
+            token = None
         if inline is not None:
             params["inline"] = {"config": inline}
         if variables:
             params["variables"] = {"variable": [{"name": k, "value": v} for k, v in variables.items()]}
-        out = await self.rpc("device-template-apply", **params)
+        try:
+            out = await self.rpc("device-template-apply", **params)
+        finally:
+            if token is not None:
+                _read_rpc.reset(token)
         return int(out["tid"]) if out.get("tid") is not None else None
 
     async def rpc_result(self, tid: int) -> dict[str, Any]:

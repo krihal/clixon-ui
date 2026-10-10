@@ -58,3 +58,25 @@ async def test_html_error_is_readable():
     c = make(lambda r: httpx.Response(502, text="<html><head><title>502 Bad Gateway</title></head></html>"))
     with pytest.raises(RestconfError, match="web server answered HTTP 502"):
         await c.devices()
+
+
+async def test_user_sent_as_header_and_view_only_guard():
+    seen = []
+
+    def h(r: httpx.Request):
+        seen.append((r.method, r.headers.get("x-forwarded-user"), r.headers.get("http_authorization")))
+        return httpx.Response(200, json={})
+
+    c = make(h)
+    c.user_provider = lambda: "kim"
+    await c.get("clixon-controller:devices")
+    assert seen[0][1] == "kim" and seen[0][2] == "kim"
+
+    def deny():
+        raise PermissionError("view-only")
+
+    c.write_guard = deny
+    await c.get("clixon-controller:devices")  # reads pass
+    with pytest.raises(PermissionError):
+        await c.local_commit()
+    assert len(seen) == 2  # nothing was sent for the refused write
