@@ -284,7 +284,7 @@ async def delete_flow(svc: Node, key: str) -> bool:
     _dispose(d)
     if choice == "candidate":
         try:
-            await views.client.delete_service(svc.module, svc.name, key)
+            await views.client.delete_service(svc.module, svc.name, key, svc.keys)
         except RestconfError as e:
             ui.notify(f"Could not delete: {e}", type="negative", multi_line=True, close_button=True, timeout=0)
             return False
@@ -524,7 +524,7 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         if editing:
             await views.client.put_service(svc.module, svc.name, k, {f"{svc.module}:{svc.name}": [original]})
         else:
-            await views.client.delete_service(svc.module, svc.name, k)
+            await views.client.delete_service(svc.module, svc.name, k, svc.keys)
 
     async def commit_click() -> None:
         """Commit this instance. Pending form edits are applied only for the dry run, then reverted; they are saved
@@ -643,7 +643,7 @@ async def property_form_page(qname: str):
                 for k, body_ in entries.items():
                     await views.client.put_property(prop.module, prop.name, body_, k)
                 for k in old_keys - entries.keys():
-                    await views.client.delete_property(prop.module, prop.name, k)
+                    await views.client.delete_property(prop.module, prop.name, k, prop.keys)
                 old_keys.clear()
                 old_keys.update(entries)
             else:

@@ -9,8 +9,12 @@ from urllib.parse import quote
 
 import httpx
 
+from .netconfxml import NC, Op, edit_config_body
+
 NS = "clixon-controller"
 JSON = "application/yang-data+json"
+XML = "application/yang-data+xml"
+NS_URI = "http://clicon.org/controller"
 
 
 class RestconfError(Exception):
@@ -25,16 +29,20 @@ def _error_message(resp: httpx.Response) -> str:
     try:
         err = resp.json()["ietf-restconf:errors"]["error"]
         err = err[0] if isinstance(err, list) else err
-        return err.get("error-message") or err.get("error-tag", resp.text)
+        msg = err.get("error-message") or err.get("error-tag", resp.text)
     except Exception:
         if "<html" in resp.text[:200].lower():
             return f"The controller's web server answered HTTP {resp.status_code} {resp.reason_phrase}. It may be busy or restarting; try again."
         return f"HTTP {resp.status_code}: {resp.text[:200]}"
+    if "Mountpoint operation on closed device" in msg:
+        msg += ". All devices must be connected (open) to read this; open or disable the closed device and try again."
+    return msg
 
 
 class ClixonClient:
     def __init__(self, url: str, verify: bool = True, transport: httpx.AsyncBaseTransport | None = None):
         self.url = url.rstrip("/")
+        self._namespaces: dict[str, str] | None = None
         self.on_unreachable = None  # called with the error each time the controller cannot be reached
         self._http = httpx.AsyncClient(
             base_url=f"{self.url}/restconf",
@@ -64,6 +72,20 @@ class ClixonClient:
         if resp.status_code >= 400:
             raise RestconfError(_error_message(resp))
         return resp.json() if resp.content.strip() else {}
+
+    async def namespaces(self) -> dict[str, str]:
+        """module name -> XML namespace, from the controller's YANG library (cached)."""
+        if self._namespaces is None:
+            lib = await self.get("ietf-yang-library:yang-library/module-set=top")
+            mods = lib["ietf-yang-library:module-set"][0]["module"]
+            self._namespaces = {m["name"]: m["namespace"] for m in mods if "namespace" in m}
+        return self._namespaces
+
+    async def edit_config(self, tree: dict) -> None:
+        """NETCONF edit-config of the candidate (see netconfxml). Unlike a write through the RESTCONF datastore path
+        this is NOT autocommitted: the change stays in the candidate until `local_commit` / a controller commit."""
+        body = edit_config_body(tree, await self.namespaces())
+        await self._request("POST", "/operations/ietf-netconf:edit-config", content=body, headers={"Content-Type": XML})
 
     async def get(self, path: str) -> dict:
         return await self._request("GET", f"/data/{path}")
@@ -122,15 +144,21 @@ class ClixonClient:
         out = (await self._request("POST", f"/operations/{NS}:get-device-schema", json=body)).get(f"{NS}:output", {})
         return _as_list(out.get("schema", []))
 
+    async def _device_list_names(self, lst: str) -> list[str]:
+        """Names of a `devices` list (rpc-template, device-group, ...). `devices?depth=3` fails with "Mountpoint
+        operation on closed device", so ask NETCONF get-config with an xpath filter that never touches devices."""
+        body = (f'<input xmlns="{NC}"><source><running/></source><filter type="xpath" '
+                f'select="/c:devices/c:{lst}/c:name" xmlns:c="{NS_URI}"/></input>')
+        data = await self._request("POST", "/operations/ietf-netconf:get-config", content=body, headers={"Content-Type": XML})
+        devices = data.get("ietf-restconf:output", {}).get("data", {}).get("devices", {})
+        return sorted(e["name"] for e in _as_list(devices.get(lst, [])))
+
     async def device_groups(self) -> list[str]:
-        data = await self._request("GET", f"/data/{NS}:devices?content=config&depth=3")
-        d = data.get(f"{NS}:devices", {})
-        return sorted(g["name"] for g in _as_list(d.get("device-group", [])))
+        return await self._device_list_names("device-group")
 
     async def rpc_templates(self) -> list[dict]:
         """All RPC templates with their RPC body and declared variables."""
-        data = await self._request("GET", f"/data/{NS}:devices?content=config&depth=3")
-        names = sorted(t["name"] for t in _as_list(data.get(f"{NS}:devices", {}).get("rpc-template", [])))
+        names = await self._device_list_names("rpc-template")
 
         gate = asyncio.Semaphore(4)  # more than ~15 parallel requests make the controller answer 502
 
@@ -248,23 +276,28 @@ class ClixonClient:
                 ("device", "device-group", "device-profile", "template", "rpc-template")}
 
     async def inventory_delete(self, kind: str, key: str) -> None:
-        await self._request("DELETE", f"{self.INV}/{kind}={quote(key, safe='')}")
+        await self.edit_config({f"{NS}:devices": {kind: [Op("remove", {"name": key})]}})
 
     async def inventory_put(self, kind: str, key: str, entry: dict) -> None:
         """Create or replace one entry. NOT for an existing device: replacing it would wipe its mounted config."""
-        await self._request("PUT", f"{self.INV}/{kind}={quote(key, safe='')}", json={f"{NS}:{kind}": [entry]})
+        await self.edit_config({f"{NS}:devices": {kind: [Op("replace", entry)]}})
 
     async def device_update(self, key: str, old: dict, new: dict) -> None:
         """Change an existing device one top-level setting at a time, leaving the mounted `config` alone.
         `old`/`new` are the entries as RESTCONF objects (without `config`); a setting missing in `new` is deleted."""
-        base = f"{self.INV}/device={quote(key, safe='')}"
+        changes: dict = {}
         for name in sorted((set(old) | set(new)) - {"name", "config"}):
             if old.get(name) == new.get(name):
                 continue
             if name not in new:
-                await self._request("DELETE", f"{base}/{name}")
+                changes[name] = Op("remove", old[name] if isinstance(old[name], list) else None)
+            elif isinstance(new[name], list):  # (leaf-)list: replace entries, drop the ones that went away
+                gone = [i for i in _as_list(old.get(name, [])) if i not in new[name] and not isinstance(i, dict)]
+                changes[name] = [Op("replace", i) for i in new[name]] + [Op("remove", i) for i in gone]
             else:
-                await self._request("PUT", f"{base}/{name}", json={f"{NS}:{name}": new[name]})
+                changes[name] = Op("replace", new[name])
+        if changes:
+            await self.edit_config({f"{NS}:devices": {"device": [{"name": key, **changes}]}})
 
     NACM = "/ds/ietf-datastores:candidate/ietf-netconf-acm:nacm"
 
@@ -280,14 +313,14 @@ class ClixonClient:
 
     async def put_nacm(self, body: dict) -> None:
         """Replace the whole NACM configuration in the candidate."""
-        await self._request("PUT", self.NACM, json={"ietf-netconf-acm:nacm": body})
+        await self.edit_config({"ietf-netconf-acm:nacm": Op("replace", body)})
 
     async def delete_nacm(self) -> None:
-        await self._request("DELETE", self.NACM)
+        await self.edit_config({"ietf-netconf-acm:nacm": Op("remove", {})})
 
     async def local_commit(self) -> None:
         """Plain NETCONF commit of the controller's own candidate into running (no push to devices)."""
-        await self._request("POST", "/operations/ietf-netconf:commit", json={"ietf-netconf:input": {}})
+        await self._request("POST", "/operations/ietf-netconf:commit")  # no body: the CLI sends a bare <commit/>
 
     async def delete_service_commit(self, instance: str, on_update=None) -> dict | None:
         """The controller's own delete: removes the service instance and its device configuration, then commits.
@@ -298,28 +331,29 @@ class ClixonClient:
         return await self.wait_transaction(int(tid), timeout=600, interval=0.5, on_update=on_update) if tid is not None else None
 
     @staticmethod
-    def _service_path(module: str, name: str, key: str) -> str:
-        return f"/ds/ietf-datastores:candidate/{NS}:services/{module}:{name}={quote(key, safe='')}"
+    def _key_entry(keys: list[str], key: str) -> dict:
+        """The key leaves of a list entry from its (comma separated) key string."""
+        return dict(zip(keys, key.split(",") if len(keys) > 1 else [key]))
 
     async def put_service(self, module: str, name: str, key: str, body: dict) -> None:
         """Create or replace one service instance in the candidate datastore."""
-        await self._request("PUT", self._service_path(module, name, key), json=body)
-
-    @staticmethod
-    def _property_path(module: str, name: str, key: str | None = None) -> str:
-        path = f"/ds/ietf-datastores:candidate/{NS}:services/properties/{module}:{name}"
-        # composite keys are comma separated; each part is escaped on its own
-        return path + (f"={','.join(quote(k, safe='') for k in key.split(','))}" if key is not None else "")
+        member = f"{module}:{name}"
+        await self.edit_config({f"{NS}:services": {member: [Op("replace", e) for e in _as_list(body[member])]}})
 
     async def put_property(self, module: str, name: str, body: dict, key: str | None = None) -> None:
         """Create or replace one `services/properties` container, or (with `key`) one entry of a property list."""
-        await self._request("PUT", self._property_path(module, name, key), json=body)
+        member = f"{module}:{name}"
+        value = body[member]
+        await self.edit_config({f"{NS}:services": {"properties": {member: Op("replace", value)}}})
 
-    async def delete_property(self, module: str, name: str, key: str | None = None) -> None:
-        await self._request("DELETE", self._property_path(module, name, key))
+    async def delete_property(self, module: str, name: str, key: str | None = None, keys: list[str] | None = None) -> None:
+        """Remove a property container, or (with `key` and the list's key leaf names) one entry of a property list."""
+        member = f"{module}:{name}"
+        target = [Op("remove", self._key_entry(keys or [], key))] if key is not None else Op("remove", {})
+        await self.edit_config({f"{NS}:services": {"properties": {member: target}}})
 
-    async def delete_service(self, module: str, name: str, key: str) -> None:
-        await self._request("DELETE", self._service_path(module, name, key))
+    async def delete_service(self, module: str, name: str, key: str, keys: list[str]) -> None:
+        await self.edit_config({f"{NS}:services": {f"{module}:{name}": [Op("remove", self._key_entry(keys, key))]}})
 
     async def transactions(self) -> list[dict]:
         try:

@@ -52,9 +52,12 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - RPCs return a `tid`; poll `/data/clixon-controller:transactions/transaction=<tid>` until `state == DONE`
   (`wait_transaction`). Results of device RPCs come from `device-rpc-result`. Streams/SSE are not usable (406).
 - The controller's nginx answers **502 above ~15 parallel requests**. Cap concurrency (we use 4) and keep the retry.
-- Candidate datastore is readable/writable at `/restconf/ds/ietf-datastores:candidate/...`. **PUT replaces the whole
-  list entry**, so the hidden controller-managed `created` container must be sent back (`preserved` in the form page),
-  otherwise the controller loses track of what a service created.
+- Candidate datastore is **readable** at `/restconf/ds/ietf-datastores:candidate/...`. Do **not write** there: the RESTCONF
+  daemon sends `edit-config cl:autocommit="true"`, so every PUT/DELETE is committed at once (services re-run). Writes go
+  through `client.edit_config()` = `POST /operations/ietf-netconf:edit-config` (target candidate, no autocommit) with an
+  **XML** body (`netconfxml.py`; JSON cannot carry `nc:operation`). Replacing a list entry = `Op("replace", entry)` (like PUT:
+  the hidden controller-managed `created` container must be sent back, `preserved` in the form page), removing = `Op("remove",
+  {keys})`; delete callers need the list's key leaf names (`svc.keys`). Then `local_commit()` = bare `<commit/>` = CLI `commit local`.
 - Listing a whole list path (e.g. `.../services/l2c:l2c`) fails: lists need a key. Read the parent container.
 - Service JSON: top-level list key is `module:name`; submodules map to their belongs-to module (`bgp`, not
   `bgp-customer`). Numbers: int64/uint64/decimal64 are strings in RFC 7951 JSON.
