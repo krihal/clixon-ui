@@ -1,0 +1,49 @@
+module demo-ntp {
+    namespace "http://example.net/demo/ntp";
+    prefix dntp;
+
+    import ietf-inet-types { prefix inet; }
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: NTP servers on a group of devices.";
+    }
+
+    augment /ctrl:services {
+        list ntp {
+            key "service-name";
+            description "NTP servers configured on devices";
+
+            leaf service-name {
+                type string;
+                description "Name of the NTP service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Free text";
+            }
+
+            leaf-list server {
+                type inet:host;
+                min-elements 1;
+                description "NTP server, address or name";
+            }
+
+            leaf-list device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                description "Devices that use these servers";
+            }
+
+            leaf prefer-first {
+                type boolean;
+                default "true";
+                description "Mark the first server as preferred";
+            }
+        }
+    }
+}

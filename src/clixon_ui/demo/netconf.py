@@ -49,6 +49,8 @@ class Meta:
         walk(schema.top_container(), "")
         for lst in schema.inventory().values():
             walk(lst, "devices")
+        for prop in schema.properties():  # augments of services/properties are not always copied into the services container
+            walk(prop, "properties")
         if (nacm := schema.nacm()) is not None:
             walk(nacm, "")
         return cls(nodes)

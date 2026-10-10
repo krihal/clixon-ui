@@ -1,0 +1,62 @@
+module demo-static-route {
+    namespace "http://example.net/demo/static-route";
+    prefix dsr;
+
+    import ietf-inet-types { prefix inet; }
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: static routes on one device.";
+    }
+
+    augment /ctrl:services {
+        list static-route {
+            key "service-name";
+            description "A set of static routes on a device";
+
+            leaf service-name {
+                type string;
+                description "Name of the service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Free text";
+            }
+
+            leaf device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                mandatory true;
+                description "Device that gets the routes";
+            }
+
+            list route {
+                key "prefix";
+                description "One static route";
+
+                leaf prefix {
+                    type inet:ip-prefix;
+                    description "Destination";
+                }
+
+                leaf next-hop {
+                    type inet:ip-address;
+                    mandatory true;
+                    description "Where to send the traffic";
+                }
+
+                leaf distance {
+                    type uint8 {
+                        range "1..255";
+                    }
+                    default "5";
+                    description "Administrative distance (preference)";
+                }
+            }
+        }
+    }
+}

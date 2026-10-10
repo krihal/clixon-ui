@@ -1,0 +1,67 @@
+module demo-vlan {
+    namespace "http://example.net/demo/vlan";
+    prefix dvlan;
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: one VLAN on a set of switch ports.";
+    }
+
+    augment /ctrl:services {
+        list vlan {
+            key "service-name";
+            description "A VLAN that is configured on ports of several devices";
+
+            leaf service-name {
+                type string;
+                description "Name of the VLAN service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "What the VLAN is used for";
+            }
+
+            leaf vlan-id {
+                type uint16 {
+                    range "2..4094";
+                }
+                mandatory true;
+                description "802.1Q VLAN id";
+            }
+
+            list member {
+                key "device interface";
+                description "A port that carries the VLAN";
+
+                leaf device {
+                    type leafref {
+                        path "/ctrl:devices/ctrl:device/ctrl:name";
+                    }
+                    description "Device with the port";
+                }
+
+                leaf interface {
+                    type string;
+                    description "Interface name, for example Ethernet3";
+                }
+
+                leaf mode {
+                    type enumeration {
+                        enum access {
+                            description "Untagged";
+                        }
+                        enum trunk {
+                            description "Tagged";
+                        }
+                    }
+                    default "access";
+                    description "How the port carries the VLAN";
+                }
+            }
+        }
+    }
+}

@@ -8,6 +8,7 @@ import logging
 import httpx
 
 from ..client import ClixonClient
+from . import network_sources  # noqa: F401  (main() installs it)
 from .controller import Controller
 
 log = logging.getLogger("clixon_ui.demo")

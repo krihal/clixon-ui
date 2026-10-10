@@ -1,0 +1,29 @@
+module junos-rpc-interfaces {
+    namespace "http://example.net/demo/junos-rpc/interfaces";
+    prefix jri;
+
+    revision 2024-01-01 {
+        description "Demo RPCs of the Junos device: interfaces.";
+    }
+
+    rpc get-interface-information {
+        description "Show interface status and statistics";
+        input {
+            leaf terse {
+                type empty;
+            }
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+
+    rpc get-lldp-interface-neighbors {
+        description "Show LLDP neighbours, optionally for one interface";
+        input {
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+}

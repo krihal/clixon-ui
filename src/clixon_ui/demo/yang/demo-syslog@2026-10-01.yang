@@ -1,0 +1,65 @@
+module demo-syslog {
+    namespace "http://example.net/demo/syslog";
+    prefix dsl;
+
+    import ietf-inet-types { prefix inet; }
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: remote syslog servers on a set of devices.";
+    }
+
+    augment /ctrl:services {
+        list syslog {
+            key "service-name";
+            description "Remote syslog servers";
+
+            leaf service-name {
+                type string;
+                description "Name of the service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Free text";
+            }
+
+            leaf-list device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                description "Devices that log to these servers";
+            }
+
+            list server {
+                key "host";
+                description "A syslog server";
+
+                leaf host {
+                    type inet:host;
+                    description "Address or name of the server";
+                }
+
+                leaf port {
+                    type inet:port-number;
+                    default "514";
+                    description "UDP port";
+                }
+
+                leaf severity {
+                    type enumeration {
+                        enum error;
+                        enum warning;
+                        enum notice;
+                        enum info;
+                        enum debug;
+                    }
+                    default "warning";
+                    description "Send messages of this severity and worse";
+                }
+            }
+        }
+    }
+}

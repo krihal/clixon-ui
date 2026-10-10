@@ -1,0 +1,62 @@
+module demo-bgp-peering {
+    namespace "http://example.net/demo/bgp-peering";
+    prefix dbgp;
+
+    import ietf-inet-types { prefix inet; }
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: an external BGP neighbour on one device.";
+    }
+
+    augment /ctrl:services {
+        list bgp-peering {
+            key "service-name";
+            description "An eBGP neighbour on a device";
+
+            leaf service-name {
+                type string;
+                description "Name of the peering";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Who the peer is";
+            }
+
+            leaf device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                mandatory true;
+                description "Device that peers";
+            }
+
+            leaf neighbor-address {
+                type inet:ip-address;
+                mandatory true;
+                description "Address of the neighbour";
+            }
+
+            leaf peer-as {
+                type inet:as-number;
+                mandatory true;
+                description "AS number of the neighbour";
+            }
+
+            leaf max-prefixes {
+                type uint32;
+                default "1000";
+                description "Maximum number of prefixes accepted from the neighbour";
+            }
+
+            leaf shutdown {
+                type boolean;
+                default "false";
+                description "Administratively disable the session";
+            }
+        }
+    }
+}

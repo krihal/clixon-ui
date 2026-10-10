@@ -23,7 +23,7 @@ from .. import confview
 from ..rpcutil import substitute
 from ..schema import Schema
 from ..servicechanges import changed_instances
-from . import netconf, seed
+from . import netconf, render, seed
 
 CTRL = "clixon-controller"
 DEVICES, SERVICES, NACM = f"{CTRL}:devices", f"{CTRL}:services", "ietf-netconf-acm:nacm"
@@ -157,9 +157,14 @@ class Controller:
             if keyval:
                 if not isinstance(node, list):
                     return None
-                keys = self.meta.keys(parent_local, local, module)
+                known = self.meta.node(parent_local, local, module)
                 wanted = [unquote(k) for k in keyval.split(",")]
-                node = next((e for e in node if [str(e.get(k)) for k in keys] == wanted), None)
+
+                def ident(e: dict) -> list[str]:  # models the controller does not know (device config): `name`, else the first scalar leaf
+                    keys = list(known.keys) if known is not None and known.keys else [confview.entry_key(e) or "name"]
+                    return [str(e.get(k)) for k in keys]
+
+                node = next((e for e in node if ident(e) == wanted), None)
                 if node is None:
                     return None
                 node = [node] if seg is segments[-1] else node
@@ -167,28 +172,9 @@ class Controller:
 
     # ------------------------------------------------------------------------------------------ service "script"
     @staticmethod
-    def _fragment(entry: dict) -> dict[str, list[str]]:
-        """Device -> lines the service would configure there. Invented: an interface block per `device` container."""
-        out: dict[str, list[str]] = {}
-        label = f"{entry.get('service-name', '')}: {entry.get('description', '')}".strip(": ")
-
-        def walk(x: Any) -> None:
-            if isinstance(x, dict):
-                dev = x.get("device")
-                if isinstance(dev, dict) and dev.get("name"):
-                    ifaces = dev.get("interface")
-                    ifaces = ifaces if isinstance(ifaces, list) else [{"interface-name": ifaces}] if ifaces else []
-                    cfg = {"interfaces": {"interface": [{"name": i.get("interface-name", ""), "description": label,
-                                                         **{k: v for k, v in i.items() if k in ("description", "mtu", "speed")}} for i in ifaces]}}
-                    out.setdefault(dev["name"], []).extend(confview.to_lines(cfg)[0])
-                for v in x.values():
-                    walk(v)
-            elif isinstance(x, list):
-                for v in x:
-                    walk(v)
-
-        walk(entry)
-        return out
+    def _fragment(kind: str, entry: dict) -> dict[str, list[str]]:
+        """Device -> diff lines the service would configure there (see render.py)."""
+        return {dev: confview.to_lines(cfg)[0] for dev, cfg in render.fragments(kind, entry, seed.kind).items()}
 
     def _instance_index(self, services: dict) -> dict[str, dict]:
         out = {}
@@ -209,8 +195,9 @@ class Controller:
             names = changed_instances(self.candidate[SERVICES], self.running[SERVICES])
         self.actions = {}
         for n in names:
-            new = self._fragment(cand.get(n, {}))
-            old = self._fragment(run.get(n, {}))
+            kind = n.split(" ", 1)[0]
+            new = self._fragment(kind, cand.get(n, {}))
+            old = self._fragment(kind, run.get(n, {}))
             for dev in sorted(new.keys() | old.keys()):
                 lines = [ln for ln in difflib.unified_diff(old.get(dev, []), new.get(dev, []), lineterm="", n=2) if not ln.startswith(("---", "+++", "@@"))]
                 if lines:
@@ -226,7 +213,7 @@ class Controller:
         """candidate -> running. A service that was not deployed yet becomes deployed (`created`)."""
         for key, val in self.candidate[SERVICES].items():
             for e in val if isinstance(val, list) else []:
-                e.setdefault("created", {"path": [f"/{CTRL}:devices/device={d}" for d in self._fragment(e)]})
+                e.setdefault("created", {"path": [f"/{CTRL}:devices/device={d}" for d in self._fragment(_local(key), e)]})
         self.running = seed.clone(self.candidate)
         names = self.device_names()
         for n in names:  # a new device exists but is not connected; a removed one takes its state with it
@@ -343,7 +330,7 @@ class Controller:
                     self.state[d]["conn-state"] = "CLOSED"
                 else:
                     self.state.setdefault(d, {"conn-state": "OPEN"})["conn-state"] = "OPEN"
-                    self.configs.setdefault(d, {"junos-conf-root:configuration": {"junos-conf-system:system": {"host-name": d}}})
+                    self.configs.setdefault(d, {"openconfig-system:system": {"config": {"hostname": d}}})
                 self.state[d]["conn-state-timestamp"] = seed.ts(seed.now())
             return {"tid": self.new_tx(f"{inp['operation'].title()} {inp.get('device')}", user, devs)}
         if name == "config-pull":
@@ -354,9 +341,14 @@ class Controller:
         if name == "get-device-config":
             return {"config": self.configs[inp["device"]]}
         if name == "get-device-schema":
-            mods = [m for m in self.device_modules.values() if not inp.get("name") or m["name"] == inp["name"]]
+            mods = [m for m in self.modules_of(inp["device"]) if not inp.get("name") or m["name"] == inp["name"]]
             return {"schema": [{"name": m["name"], "revision": m["revision"], **({"data": m["text"]} if inp.get("detail") else {})} for m in mods]}
         raise KeyError(f"rpc {name} is not implemented by the demo controller")
+
+    def modules_of(self, device: str) -> list[dict]:
+        """Device YANG the controller holds for a device: Junos RPC modules for Junos, the demo ones for the others."""
+        juniper = seed.kind(device) == "juniper"
+        return [m for n, m in self.device_modules.items() if n.startswith("junos-rpc-") == juniper or n in ("demo-rpc-lldp", "demo-rpc-isis")]
 
     def rpc_commit(self, inp: dict, user: str) -> dict:
         push, actions, instance = inp.get("push", "VALIDATE"), inp.get("actions", "CHANGE"), inp.get("service-instance")

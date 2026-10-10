@@ -1,0 +1,26 @@
+module demo-rpc-interfaces {
+    namespace "http://example.net/demo/rpc/interfaces";
+    prefix dri;
+
+    revision 2024-01-01 {
+        description "RPCs of the demo devices: interfaces.";
+    }
+
+    rpc get-interface-state {
+        description "Show status and counters of one or all interfaces";
+        input {
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+
+    rpc request-clear-counters {
+        description "Reset the counters of an interface";
+        input {
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+}

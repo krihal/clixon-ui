@@ -1,0 +1,25 @@
+module demo-rpc-system {
+    namespace "http://example.net/demo/rpc/system";
+    prefix drs;
+
+    revision 2024-01-01 {
+        description "RPCs of the demo devices: system.";
+    }
+
+    rpc get-system-state {
+        description "Show hostname, model, software version and serial number";
+    }
+
+    rpc get-system-uptime {
+        description "Show the time since the system was started";
+    }
+
+    rpc request-reboot {
+        description "Reboot the device";
+        input {
+            leaf delay {
+                type uint32;
+            }
+        }
+    }
+}

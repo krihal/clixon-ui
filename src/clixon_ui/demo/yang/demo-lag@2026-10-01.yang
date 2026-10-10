@@ -1,0 +1,68 @@
+module demo-lag {
+    namespace "http://example.net/demo/lag";
+    prefix dlag;
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: a link aggregation group (LACP) on one device.";
+    }
+
+    augment /ctrl:services {
+        list lag {
+            key "service-name";
+            description "A link aggregation group";
+
+            leaf service-name {
+                type string;
+                description "Name of the service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "What the bundle connects to";
+            }
+
+            leaf device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                mandatory true;
+                description "Device with the bundle";
+            }
+
+            leaf lag-id {
+                type uint16 {
+                    range "0..999";
+                }
+                mandatory true;
+                description "Number of the bundle (Port-Channel N, aeN)";
+            }
+
+            leaf-list member {
+                type string;
+                min-elements 1;
+                description "Physical interfaces in the bundle";
+            }
+
+            leaf min-links {
+                type uint8 {
+                    range "1..16";
+                }
+                default "1";
+                description "Minimum number of member links that must be up";
+            }
+
+            leaf lacp {
+                type enumeration {
+                    enum active;
+                    enum passive;
+                }
+                default "active";
+                description "LACP mode";
+            }
+        }
+    }
+}

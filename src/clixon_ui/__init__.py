@@ -44,6 +44,7 @@ def main() -> None:
         secret = os.environ.get("CLIXON_UI_SECRET") or db.secret_key(s)
     if a.demo:
         from . import demo
+        demo.network_sources.install()  # the map reads OpenConfig replies, not Juniper ones
         views.client, views.demo_controller = demo.make_client()
         views.DEMO = True
         app.on_startup(lambda: background_tasks.create(demo.reset_loop(views.demo_controller), name="demo reset"))

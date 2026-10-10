@@ -60,8 +60,9 @@ async def device_config_page(name: str):
         if not cfg:
             ui.label("The controller holds no configuration for this device yet. Pull it from the Devices page.").classes("mut")
             return
-        root = next(iter(cfg))
-        nodes = outline(cfg[root])
+        # Junos has one root container; other models (OpenConfig) have several top-level containers and no root
+        root = next(iter(cfg)) if len(cfg) == 1 else ""
+        nodes = outline(cfg[root] if root else cfg)
         shown = {"lines": [], "path": ""}
 
         with ui.row().classes("w-full no-wrap items-stretch gap-4 grow").style("min-height:0"):
@@ -99,7 +100,7 @@ async def device_config_page(name: str):
         meta.set_text("loading…")
         notice.set_text("")
         try:
-            obj = await client.device_node(name, f"{root}/{node_id}")
+            obj = await client.device_node(name, f"{root}/{node_id}" if root else node_id)
         except RestconfError as e:
             shown["lines"] = []
             body.set_content("")

@@ -1,0 +1,12 @@
+module demo-rpc-isis {
+    namespace "http://example.net/demo/rpc/isis";
+    prefix drisis;
+
+    revision 2024-01-01 {
+        description "RPCs of the demo devices: IS-IS.";
+    }
+
+    rpc get-isis-state {
+        description "Show IS-IS interfaces, metrics and adjacencies (OpenConfig openconfig-isis state tree)";
+    }
+}

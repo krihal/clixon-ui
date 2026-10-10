@@ -1,0 +1,35 @@
+module demo-defaults {
+    namespace "http://example.net/demo/defaults";
+    prefix ddef;
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service properties: site-wide defaults shared by all services.";
+    }
+
+    augment /ctrl:services/properties {
+        container demo-defaults {
+            description "Site-wide defaults";
+
+            leaf domain-name {
+                type string;
+                default "demo.example.net";
+                description "DNS domain of the site";
+            }
+
+            leaf default-mtu {
+                type uint16 {
+                    range "576..9216";
+                }
+                default "9214";
+                description "MTU for new routed interfaces";
+            }
+
+            leaf contact {
+                type string;
+                description "Who to ask about this network";
+            }
+        }
+    }
+}

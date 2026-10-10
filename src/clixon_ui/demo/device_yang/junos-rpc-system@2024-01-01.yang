@@ -1,13 +1,13 @@
 module junos-rpc-system {
-    namespace "http://yang.juniper.net/junos/rpc/system";
+    namespace "http://example.net/demo/junos-rpc/system";
     prefix jrs;
 
     revision 2024-01-01 {
-        description "Demo subset.";
+        description "Demo RPCs of the Junos device: system.";
     }
 
     rpc get-system-information {
-        description "Show system information (hostname, model, Junos version)";
+        description "Show hostname, model and Junos version";
         input {
             leaf brief {
                 type empty;
@@ -15,17 +15,10 @@ module junos-rpc-system {
         }
     }
 
-    rpc get-system-uptime-information {
-        description "Show time since the system was started";
-    }
-
     rpc request-system-reboot {
-        description "Reboot the system";
+        description "Reboot the device";
         input {
             leaf in {
-                type string;
-            }
-            leaf message {
                 type string;
             }
         }

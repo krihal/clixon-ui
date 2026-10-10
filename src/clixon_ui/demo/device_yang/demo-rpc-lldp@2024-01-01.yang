@@ -1,0 +1,17 @@
+module demo-rpc-lldp {
+    namespace "http://example.net/demo/rpc/lldp";
+    prefix drl;
+
+    revision 2024-01-01 {
+        description "RPCs of the demo devices: LLDP.";
+    }
+
+    rpc get-lldp-neighbors {
+        description "Show LLDP neighbours (OpenConfig openconfig-lldp state tree)";
+        input {
+            leaf interface-name {
+                type string;
+            }
+        }
+    }
+}

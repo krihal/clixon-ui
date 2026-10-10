@@ -45,3 +45,10 @@ def test_list_nodes_are_not_selectable_but_entries_are():
     assert lst["label"] == "interface (1)" and lst["selectable"] is False       # bare list path would be "malformed key"
     assert "selectable" not in lst["children"][0]                                # an entry can be fetched
     assert tree["groups (2) – entries not browsable"]["selectable"] is False and not tree["groups (2) – entries not browsable"]["children"]
+
+
+def test_outline_uses_the_first_scalar_leaf_when_there_is_no_name():
+    # OpenConfig lists are keyed by vlan-id, interface-id, ...
+    nodes = outline({"vlans": {"vlan": [{"vlan-id": 10, "config": {"name": "a"}}, {"vlan-id": 20}]}})
+    kids = nodes[0]["children"][0]["children"]
+    assert [(k["id"], k["label"]) for k in kids] == [("vlans/vlan=10", "10"), ("vlans/vlan=20", "20")]

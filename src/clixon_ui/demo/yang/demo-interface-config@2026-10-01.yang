@@ -1,0 +1,57 @@
+module demo-interface-config {
+    namespace "http://example.net/demo/interface-config";
+    prefix dif;
+
+    import clixon-controller { prefix ctrl; }
+
+    revision "2026-10-01" {
+        description "Demo service: description, MTU and admin state of one interface.";
+    }
+
+    augment /ctrl:services {
+        list interface-config {
+            key "service-name";
+            description "Basic settings of one interface";
+
+            leaf service-name {
+                type string;
+                description "Name of the service";
+            }
+
+            uses ctrl:created-by-service;
+
+            leaf description {
+                type string;
+                description "Interface description";
+            }
+
+            leaf device {
+                type leafref {
+                    path "/ctrl:devices/ctrl:device/ctrl:name";
+                }
+                mandatory true;
+                description "Device with the interface";
+            }
+
+            leaf interface {
+                type string;
+                mandatory true;
+                description "Interface name, for example Ethernet10 or ge-0/1/0";
+            }
+
+            leaf mtu {
+                type uint16 {
+                    range "576..9216";
+                }
+                default "1500";
+                description "Maximum transmission unit in bytes";
+            }
+
+            leaf enabled {
+                type boolean;
+                default "true";
+                description "Administrative state";
+            }
+        }
+    }
+}

@@ -1,8 +1,8 @@
 # Online demo
 
-`clixon-ui --demo` runs the UI against a fake controller built into the process: three invented Juniper-style
-routers (`demo-mx-1`, `demo-mx-2`, `demo-ptx-1`), a few services, LLDP/IS-IS data for the network map and canned RPC
-replies. Nothing is contacted, so it is safe to put on the internet.
+`clixon-ui --demo` runs the UI against a fake controller built into the process: ten invented
+devices (3 Juniper `demo-mx-*`/`demo-ptx-1`, 4 Arista-style `demo-eos-*`, 3 generic OpenConfig `demo-openconfig-*`), seven small services (`vlan`,
+`bgp-peering`, `ntp`, `interface-config`, `static-route`, `syslog`, `lag`) and one properties container (`demo-defaults`), LLDP/IS-IS data for the network map and canned RPC replies. Nothing is contacted, so it is safe to put on the internet.
 
 ```
 uv run clixon-ui --demo                 # http://127.0.0.1:8080, any user name and password signs in as "guest"
@@ -14,8 +14,9 @@ uv run clixon-ui --demo --port 8099
 - Everything lives in memory and is shared by all visitors. It resets to the initial data every 30 minutes, and
   anybody can press "Reset now" in the header.
 - Service scripts do not run. "Commit diff" shows an invented interface block per device the service touches.
-- The YANG in `src/clixon_ui/demo/yang` is the controller's own (get-schema), so the service forms are the real ones.
-  Device YANG for the RPC list is a small hand-written subset in `device_yang/`.
+- `demo/yang/` holds the controller's own YANG (Clixon, Apache-2.0; IETF modules) plus the demo service modules
+  written for this demo. `device_yang/` is a small hand-written set of device RPCs. See `demo/NOTICE.md` for licences.
+- Device configuration and RPC replies follow the OpenConfig models (Apache-2.0); no OpenConfig or vendor files are bundled.
 
 ## On a VPS
 
@@ -44,6 +45,9 @@ and a long `proxy_read_timeout`.
 | `demo/controller.py` | the fake RESTCONF controller (FastAPI app served through `httpx.ASGITransport`) |
 | `demo/netconf.py` | pure: edit-config XML -> edits on the JSON datastore (inverse of `netconfxml`) |
 | `demo/seed.py` | all invented data and canned device replies |
+| `demo/render.py` | what each demo service would configure on a device (for the commit diff) |
+| `demo/network_sources.py` | OpenConfig LLDP / IS-IS parsers for the network map (installed in demo mode only) |
 | `tests/test_demo.py` | the fake controller exercised through the real `ClixonClient` |
 
-To add a device, add it to `seed.DEVICES` and its links to `seed.LINKS`.
+To add a device, add it to `seed.DEVICES` and its links to `seed.LINKS`. To add a service, drop a YANG module that
+augments `/ctrl:services` into `demo/yang/`, add an instance to `seed.services()` and a renderer to `render.RENDERERS`.

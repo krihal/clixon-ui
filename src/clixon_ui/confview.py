@@ -69,6 +69,13 @@ def to_lines(obj: Any, limit: int = MAX_LINES) -> tuple[list[str], bool]:
     return out, len(out) >= limit
 
 
+def entry_key(entry: dict) -> str | None:
+    """The key leaf of a list entry: `name` (Junos), else the first scalar leaf (other models, e.g. OpenConfig `vlan-id`)."""
+    if "name" in entry:
+        return "name"
+    return next((k for k, v in entry.items() if not isinstance(v, (dict, list))), None)
+
+
 def outline(cfg: dict) -> list[dict]:
     """Tree nodes {id,label,children} from a depth-limited config object.
 
@@ -84,9 +91,10 @@ def outline(cfg: dict) -> list[dict]:
             elif isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
                 kids = []
                 for e in v:
-                    if "name" in e:
-                        eid = f"{path}={quote(str(e['name']), safe='')}"
-                        kids.append({"id": eid, "label": str(e["name"]), "children": build({a: b for a, b in e.items() if a != "name"}, eid + "/")})
+                    key = entry_key(e)
+                    if key:
+                        eid = f"{path}={quote(str(e[key]), safe='')}"
+                        kids.append({"id": eid, "label": str(e[key]), "children": build({a: b for a, b in e.items() if a != key}, eid + "/")})
                 # A list cannot be read as a whole over RESTCONF (the controller answers "malformed key"):
                 # only its entries can. So the list node itself is not selectable, it just expands.
                 note = "" if kids else " – entries not browsable"
