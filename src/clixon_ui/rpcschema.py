@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
-from dataclasses import dataclass, field
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from .client import ClixonClient
 
@@ -74,38 +78,82 @@ def parse_module(text: str, module: str) -> list[DeviceRpc]:
     return out
 
 
-class RpcIndex:
-    """Lazily built, cached index of the RPCs each device offers."""
+REVALIDATE_SECONDS = 600  # how often a device's module list is compared with the cached index
 
-    def __init__(self, client: ClixonClient):
+
+class RpcIndex:
+    """Lazily built, cached index of the RPCs each device offers.
+
+    A device's YANG module is identified by (name, revision); the parsed RPCs of a module are kept in memory and on
+    disk under that pair, so a module is downloaded and parsed once, ever, for any device that has it. The module list of
+    a device (small) is compared every few minutes: a software upgrade brings new revisions and the index is rebuilt,
+    fetching only the modules that are new. `refresh=True` ignores everything cached for that device."""
+
+    def __init__(self, client: ClixonClient, cache: Path | None = None):
         self.client = client
+        key = hashlib.sha1(client.url.encode()).hexdigest()[:10]
+        self.dir = (cache or Path.home() / ".cache" / "clixon-ui") / key / "rpc"
         self._modules: dict[tuple[str, str], list[DeviceRpc]] = {}
-        self._devices: dict[str, list[DeviceRpc]] = {}
+        self._devices: dict[str, tuple[list[DeviceRpc], list[tuple[str, str]], float]] = {}  # rpcs, module list, checked at
         self._locks: dict[str, asyncio.Lock] = {}
+
+    def _file(self, key: tuple[str, str]) -> Path:
+        return self.dir / f"{key[0]}@{key[1]}.json"
+
+    def _from_disk(self, key: tuple[str, str]) -> list[DeviceRpc] | None:
+        try:
+            return [DeviceRpc(**r) for r in json.loads(self._file(key).read_text())]
+        except (OSError, ValueError, TypeError):
+            return None  # missing or damaged: fetch again
+
+    def _to_disk(self, key: tuple[str, str], rpcs: list[DeviceRpc]) -> None:
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            self._file(key).write_text(json.dumps([asdict(r) for r in rpcs]))
+        except OSError:
+            pass  # a read-only cache directory only costs speed
 
     async def for_device(self, device: str, refresh: bool = False) -> list[DeviceRpc]:
         lock = self._locks.setdefault(device, asyncio.Lock())
         async with lock:
+            schemas = None
             if device in self._devices and not refresh:
-                return self._devices[device]
-            schemas = await self.client.device_schemas(device)
+                rpcs, known, checked = self._devices[device]
+                if time.monotonic() - checked < REVALIDATE_SECONDS:
+                    return rpcs
+                schemas = await self.client.device_schemas(device)
+                if _module_list(schemas) == known:
+                    self._devices[device] = (rpcs, known, time.monotonic())
+                    return rpcs
+            if schemas is None:
+                schemas = await self.client.device_schemas(device)
             wanted = [s for s in schemas if "rpc" in s["name"].lower()] or [
                 s for s in schemas if not s["name"].startswith(("ietf-", "iana-", "junos-conf-", "junos-common"))]
             gate = asyncio.Semaphore(4)  # the controller's web server answers 502 under heavy parallelism
 
             async def one(s: dict) -> list[DeviceRpc]:
                 key = (s["name"], s.get("revision", ""))
-                if key not in self._modules:
-                    async with gate:
-                        got = await self.client.device_schemas(device, s["name"], s.get("revision"), detail=True)
-                    text = got[0].get("data", "") if got else ""
-                    if not text:
-                        return []  # not cached: the YANG may simply not be there yet
-                    self._modules[key] = await asyncio.to_thread(parse_module, text, s["name"])
+                if not refresh:
+                    if key in self._modules:
+                        return self._modules[key]
+                    if (cached := self._from_disk(key)) is not None:
+                        self._modules[key] = cached
+                        return cached
+                async with gate:
+                    got = await self.client.device_schemas(device, s["name"], s.get("revision"), detail=True)
+                text = got[0].get("data", "") if got else ""
+                if not text:
+                    return []  # not cached: the YANG may simply not be there yet
+                self._modules[key] = await asyncio.to_thread(parse_module, text, s["name"])
+                self._to_disk(key, self._modules[key])
                 return self._modules[key]
 
             rpcs = [r for part in await asyncio.gather(*(one(s) for s in wanted)) for r in part]
             rpcs.sort(key=lambda r: r.name)
             if schemas:  # a device that was never connected has no YANG yet: do not cache the empty answer
-                self._devices[device] = rpcs
+                self._devices[device] = (rpcs, _module_list(schemas), time.monotonic())
             return rpcs
+
+
+def _module_list(schemas: list[dict]) -> list[tuple[str, str]]:
+    return sorted((s["name"], s.get("revision", "")) for s in schemas)

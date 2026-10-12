@@ -39,9 +39,41 @@ async def test_error_message():
 
 
 async def test_wait_transaction_done():
-    t = {"clixon-controller:transactions": {"transaction": [{"tid": "3", "state": "DONE", "result": "SUCCESS"}]}}
-    tr = await make(lambda r: httpx.Response(200, json=t)).wait_transaction(3, timeout=2)
+    paths = []
+
+    def h(r: httpx.Request):
+        paths.append(r.url.path)
+        return httpx.Response(200, json={"clixon-controller:transaction": [{"tid": "3", "state": "DONE", "result": "SUCCESS"}]})
+
+    tr = await make(h).wait_transaction(3, timeout=2)
     assert tr["result"] == "SUCCESS"
+    assert paths == ["/restconf/data/clixon-controller:transactions/transaction=3"]  # not the whole history
+
+
+async def test_wait_transaction_gives_up_after_the_transaction_vanishes():
+    seen = []
+
+    def h(r: httpx.Request):
+        seen.append(1)
+        if len(seen) == 1:
+            return httpx.Response(200, json={"clixon-controller:transaction": [{"tid": "4", "state": "ACTIONS"}]})
+        return httpx.Response(404, json={"ietf-restconf:errors": {"error": {"error-message": "gone"}}})
+
+    tr = await make(h).wait_transaction(4, timeout=5, interval=0.01)
+    assert tr["state"] == "ACTIONS" and len(seen) == 4
+
+
+async def test_transactions_summary_asks_for_less():
+    urls = []
+
+    def h(r: httpx.Request):
+        urls.append(str(r.url))
+        return httpx.Response(200, json={"clixon-controller:transactions": {"transaction": []}})
+
+    c = make(h)
+    await c.transactions(summary=True)
+    await c.transactions()
+    assert urls[0].endswith("transactions?depth=3") and urls[1].endswith("transactions")
 
 
 async def test_get_retries_502_then_succeeds():

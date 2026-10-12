@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from nicegui import ui
 
-from . import stats, views
+from . import pending, polling, stats, views
 from .style import BTN
 from .tables import page_column
 from .client import RestconfError, Unreachable
@@ -22,8 +22,8 @@ async def _collect() -> dict:
     """Everything the page shows, in one parallel round trip. A failing part is reported, the rest still shows."""
     c = views.client
     names = ("devices", "transactions", "candidate", "running", "inventory", "schema")
-    got = await asyncio.gather(c.devices(), c.transactions(), c.candidate_services(), c.running_services(),
-                               c.inventory(), get_schema(), return_exceptions=True)
+    got = await asyncio.gather(c.devices(cached=True), c.transactions(cached=True, summary=True), c.candidate_services(cached=True),
+                               c.running_services(cached=True), c.inventory(cached=True), get_schema(), return_exceptions=True)
     data = dict(zip(names, got))
     errors = [f"{k}: {v}" for k, v in data.items() if isinstance(v, Exception) and not isinstance(v, Unreachable)]
     down = any(isinstance(v, Unreachable) for v in data.values())
@@ -136,7 +136,7 @@ def _alert(kind: str, title: str, detail: str, action: str, on_click, writes: bo
         ui.button(action, on_click=on_click).props("outline no-caps no-wrap dense").classes("w-48 h-9 shrink-0" + (" wr" if writes else ""))
 
 
-async def _open_closed(names: list[str], total: int) -> None:
+async def _open_closed(names: list[str]) -> None:
     """Open every closed device, after asking: it changes live device connections."""
     with ui.dialog() as d, ui.card().classes("w-[520px] gap-2"):
         ui.label(f"Open {len(names)} closed devices?").classes("text-lg")
@@ -147,8 +147,9 @@ async def _open_closed(names: list[str], total: int) -> None:
     ok = bool(await d)
     d.delete()
     if ok:
-        await views.run_many("Open", {n: (lambda n=n: views.client.connection_change(n, "OPEN")) for n in names},
-                             limit=8 if len(names) == total else 1)  # a subset goes one device at a time
+        # OPEN on "*" only opens enabled devices that are closed: open ones are left alone and disabled ones skipped,
+        # which is exactly "every closed device", in one controller transaction
+        await views.run_many("Open", {"all closed devices": lambda: views.client.connection_change("*", "OPEN")}, limit=1, count=len(names))
 
 
 def _attention(s: dict) -> None:
@@ -156,12 +157,12 @@ def _attention(s: dict) -> None:
     if s.get("pending"):
         items += 1
         _alert("warn", f"{len(s['pending'])} uncommitted change{'s' if len(s['pending']) != 1 else ''}", _names(s["pending"], 3),
-               "Review & commit", lambda: ui.navigate.to("/commit"), writes=True)
+               "Review & commit", lambda: pending.open_panel(), writes=True)
     closed = [n for n, st in s.get("devices", {}).get("attention", []) if st == "CLOSED"]
     if closed:
         items += 1
         _alert("err", f"{len(closed)} device{'s' if len(closed) != 1 else ''} closed", _names(closed), "Open all closed",
-               lambda: _open_closed(closed, s["devices"]["total"]), writes=True)
+               lambda: _open_closed(closed), writes=True)
     failed = s.get("tx", {}).get("failed", 0)
     if failed:
         items += 1
@@ -247,4 +248,4 @@ async def dashboard_page() -> None:
                                   ).props("outline no-caps no-wrap").classes("w-48")
 
     await refresh()
-    ui.timer(REFRESH_SECONDS, refresh)
+    polling.poll(REFRESH_SECONDS, refresh)

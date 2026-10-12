@@ -8,7 +8,7 @@ from datetime import datetime
 
 from nicegui import app, background_tasks, ui
 
-from . import diffview, theme
+from . import diffview, polling, theme
 from .access import Access
 from .style import BTN, BTN_TOOLBAR
 from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
@@ -72,6 +72,7 @@ def menu_route(path: str) -> str:
 def reset_demo() -> None:
     """Demo mode: bring the fake controller back to its initial data and rebuild the page."""
     demo_controller.reset()
+    client.invalidate()  # the data changed behind the client's back: drop cached reads
     ui.notify("Demo data reset", type="positive")
     reload_page()
 
@@ -107,9 +108,9 @@ def frame(access: Access | None = None) -> None:
             if DEMO:
                 ui.html('<span class="pill pill-other">Demo: fake devices, reset every 30 minutes</span>')
                 ui.button("Reset now", icon="restart_alt", on_click=reset_demo).props("flat no-caps no-wrap dense").classes("header-link")
-            if access.is_admin:
-                ui.button("Admin", icon="admin_panel_settings", on_click=lambda: ui.navigate.to("/admin")).props("flat no-caps no-wrap dense").classes("header-link")
-            ui.button(access.username, icon="account_circle", on_click=lambda: ui.navigate.to("/account")).props("flat no-caps no-wrap dense").classes("header-link mr-3")
+            ui.button(access.username, icon="account_circle", on_click=lambda: ui.navigate.to("/account")).props("flat no-caps no-wrap dense").classes("header-link")
+            from .auth_views import sign_out  # lazy: auth_views imports this module
+            ui.button(icon="logout", on_click=sign_out).props("flat round dense").classes("header-link mr-3").tooltip("Sign out")
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
         "width=250 mini-width=56 behavior=desktop"
@@ -293,7 +294,7 @@ async def devices_page():
 
     async def refresh():
         try:
-            devs = await client.devices()
+            devs = await client.devices(cached=True)
         except Unreachable:
             return  # connection.py shows one dialog
         except RestconfError as e:
@@ -340,11 +341,13 @@ async def devices_page():
             else:
                 await run_many(label, {n: (lambda n=n: client.config_pull(n)) for n in names}, limit=1)
         else:
-            # A subset goes one device at a time (overlapping connection changes upset the controller);
-            # a selection covering every device keeps the parallel default.
-            everything = set(names) == {r["name"] for r in rows}
-            await run_many(label, {n: (lambda n=n: client.connection_change(n, kind.upper())) for n in names},
-                           limit=8 if everything else 1)
+            # connection-change takes a wildcard in `device` and handles every match inside ONE controller transaction,
+            # so all devices go as "*". Separate calls overlap as transactions and upset the controller, so any other
+            # selection (a wildcard cannot list arbitrary names) goes one device at a time.
+            if len(names) > 1 and set(names) == {r["name"] for r in rows}:
+                await run_many(label, {"all devices": lambda: client.connection_change("*", kind.upper())}, limit=1, count=len(names))
+            else:
+                await run_many(label, {n: (lambda n=n: client.connection_change(n, kind.upper())) for n in names}, limit=1)
         await refresh()
 
     with page_column():
@@ -372,7 +375,7 @@ async def devices_page():
         tbl.bind_filter_from(search, "value")
 
     await refresh()
-    ui.timer(POLL_SECONDS, refresh)
+    polling.poll(POLL_SECONDS, refresh)
 
 
 MODES = {
@@ -637,7 +640,7 @@ async def transactions_page():
         async def refresh() -> None:
             """Poll, but only touch the table when something changed so scroll position and page survive."""
             try:
-                trs = list(reversed(await client.transactions()))[:200]
+                trs = list(reversed(await client.transactions(cached=True, summary=True)))[:200]
             except RestconfError:
                 return
             if t.is_deleted:  # the user left the page while this poll was in flight
@@ -649,7 +652,7 @@ async def transactions_page():
                 t.update()
 
     await refresh()
-    ui.timer(POLL_SECONDS, refresh)
+    polling.poll(POLL_SECONDS, refresh)
 
 
 async def raw_page():

@@ -177,6 +177,7 @@ class Schema:
 
     def __init__(self, ctx: context.Context):
         self.ctx = ctx
+        self.modules: list[tuple[str, str]] = []
         ctrl = next(m for (n, _), m in ((k, v) for k, v in ctx.modules.items()) if n == CTRL)
         services = ctrl.search_one("container", "services")
         self.services: list[Node] = []
@@ -233,20 +234,28 @@ class Schema:
         return _convert(ctrl.search_one("container", "services"))
 
 
-async def load_schema(client: ClixonClient, cache: Path | None = None) -> Schema:
-    """Fetch every module from yang-library via get-schema, cache on disk, parse."""
-    key = hashlib.sha1(client.url.encode()).hexdigest()[:10]
-    d = (cache or Path.home() / ".cache" / "clixon-ui") / key
-    d.mkdir(parents=True, exist_ok=True)
-    lib = await client.get("ietf-yang-library:yang-library/module-set=top")
-    mods = lib["ietf-yang-library:module-set"][0]["module"]
+def module_list(mods: list[dict]) -> list[tuple[str, str]]:
+    """(name, revision) of every module and submodule in the YANG library, sorted. A module is identified by this pair,
+    so the list changes exactly when modules are added, removed or get a new revision."""
     wanted = []
     for m in mods:
         wanted.append((m["name"], m.get("revision", "")))
         wanted += [(s["name"], s.get("revision", "")) for s in m.get("submodule", [])]
+    return sorted(wanted)
+
+
+async def load_schema(client: ClixonClient, cache: Path | None = None, force: bool = False) -> Schema:
+    """Fetch every module from yang-library via get-schema, cache on disk, parse.
+
+    A module file on disk is named after (name, revision), so a new revision is fetched and an unchanged one is not.
+    `force` fetches everything again: needed when YANG was edited without a new revision."""
+    key = hashlib.sha1(client.url.encode()).hexdigest()[:10]
+    d = (cache or Path.home() / ".cache" / "clixon-ui") / key
+    d.mkdir(parents=True, exist_ok=True)
+    wanted = module_list(await client.yang_modules())
     for name, rev in wanted:
         f = d / f"{name}@{rev}.yang"
-        if f.exists():
+        if f.exists() and not force:
             continue
         try:
             out = await client._request("POST", "/operations/ietf-netconf-monitoring:get-schema", json={
@@ -255,6 +264,10 @@ async def load_schema(client: ClixonClient, cache: Path | None = None) -> Schema
             f.write_text(text["data"] if isinstance(text, dict) else text)
         except RestconfError as e:
             log.warning("get-schema %s@%s failed: %s", name, rev, e)
+    keep = {f"{name}@{rev}.yang" for name, rev in wanted}
+    for old in d.glob("*.yang"):  # revisions the controller no longer has
+        if old.name not in keep:
+            old.unlink(missing_ok=True)
     repo = repository.FileRepository(str(d), use_env=False)
     ctx = context.Context(repo)
     for name, rev in wanted:
@@ -262,7 +275,9 @@ async def load_schema(client: ClixonClient, cache: Path | None = None) -> Schema
         if f.exists():
             ctx.add_module(str(f), f.read_text(), in_format="yang")
     ctx.validate()
-    return Schema(ctx)
+    schema = Schema(ctx)
+    schema.modules = wanted  # what this schema was built from; compared with the library later to see if it is out of date
+    return schema
 
 
 def data_children(node: Node):

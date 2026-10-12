@@ -11,6 +11,9 @@ uv run clixon-ui https://localhost:1443 -k --reload # dev: restart + browser rel
 uv run pytest -q
 ```
 
+- Cached models: the controller's YANG is on disk per controller under `~/.cache/clixon-ui/<hash>/` as `name@revision.yang` (a module is identified by name+revision, so a new revision is fetched and old files are deleted). `service_views.get_schema()` compares the controller's module list with the one the schema was built from at most once a minute and reloads when it differs. YANG edited without a new revision is only picked up by the "Reload YANG" button on `/services` (or by deleting the cache directory). The device RPC index (`rpcschema.RpcIndex`) keeps parsed modules per (name, revision) on disk (`.../rpc/`), re-compares a device's module list every 10 minutes, and `refresh=True` (the RPC page's refresh button) ignores all caches for that device.
+- Transactions: polling uses `transactions(summary=True)` (`?depth=3`, no per-device results); `wait_transaction` polls one transaction (`transactions/transaction=<tid>`), never the whole list. Use `client.transaction(tid)` for details. `depth=3` on transactions is verified against the demo controller only (it ignores depth).
+- `--debug-http` (or `CLIXON_UI_DEBUG_HTTP=1`) prints every request to the controller on stderr (method, path, `X-Forwarded-User`, status, ms) plus a per-minute summary of the most frequent calls: use it to see what the UI sends and how much load it makes (`httpdebug.py`).
 - Defaults: `127.0.0.1:8080`; `--port`, `--host`; URL can come from `CLIXON_URL`. No authentication yet.
 - Python 3.14, dependencies via `uv`. `--reload` re-execs into `src/clixon_ui/_dev.py` because NiceGUI's
   reloader needs a plain script (not an entry point or `python -m`).
@@ -59,6 +62,7 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
   **XML** body (`netconfxml.py`; JSON cannot carry `nc:operation`). Replacing a list entry = `Op("replace", entry)` (like PUT:
   the hidden controller-managed `created` container must be sent back, `preserved` in the form page), removing = `Op("remove",
   {keys})`; delete callers need the list's key leaf names (`svc.keys`). Then `local_commit()` = bare `<commit/>` = CLI `commit local`.
+- `connection-change` (and `config-pull`, `controller-commit`) take a wildcard in `device` (`"*"`; `device-group` likewise) and handle every match inside ONE controller transaction (checked in `controller_rpc.c`). Separate calls for separate devices are separate transactions and upset the controller, so "all devices" is one call with `"*"`, any other selection one device at a time. OPEN only opens enabled devices that are closed (open ones untouched, disabled skipped); CLOSE closes open ones; RECONNECT closes and reopens every enabled device. A device that fails to start aborts the rest of that call.
 - Listing a whole list path (e.g. `.../services/l2c:l2c`) fails: lists need a key. Read the parent container.
 - Service JSON: top-level list key is `module:name`; submodules map to their belongs-to module (`bgp`, not
   `bgp-customer`). Numbers: int64/uint64/decimal64 are strings in RFC 7951 JSON.
@@ -117,6 +121,17 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - `/nacm` (menu "Access control"): one form for the whole `ietf-netconf-acm:nacm` container (`Schema.nacm()`). Save = PUT of the whole container to the candidate (`client.put_nacm`); Review/Commit reuse the inventory flows (`diff_datastores`, local commit, confirm dialog with a lock-out warning). Verified against the fake controller only.
 - `formdata.validate` only checks mandatory leaves of the *selected* choice case (NACM `rule` has `path` mandatory in one case).
 
+## Account page (`auth_views.py`)
+
+- One page, `/account` (header user link): everyone sees "Your account" (password, sign out); admins get a second tab "Users" (`?tab=users`) for user administration. `/admin` is only a redirect to that tab. There is no separate Admin header button.
+
+## Pending changes panel (`pending.py`)
+
+- All committing happens here. Edit pages (services, inventory, NACM) only **save to the candidate**; their "Save & review" button saves and opens `pending.open_panel()`. Other entry points: "Review & commit" on `/services/<type>` and the dashboard's "uncommitted changes" alert. There is deliberately no header button or polling.
+- The panel shows the candidate diff, then (if services changed, or an `instance` was given) the dry-run device diff (`commit_diff`). Commit stays disabled until that diff is shown. The last dry run is cached by candidate-diff text, so reopening an unchanged candidate does not rerun services; "Recompute" forces it.
+- Commit kind: one `instance` -> `commit_service(instance)` (FORCE, row rocket icon on the services page); changed services -> `commit_service(None)` (CHANGE); nothing service-related -> `local_commit()`.
+- The older description below (`commit_flow`, `commit_diff_dialog`) is gone; only `_run_commit`, `_progress`, `delete_flow` remain. The Open/Reconnect offer after a device commit was dropped with them.
+
 ## Service commit / delete flows (`service_views.py`)
 
 - **Commit** = `controller-commit source=candidate push=COMMIT` with `actions=FORCE` + `service-instance` for one
@@ -142,6 +157,7 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - **Cards in a grid are the same size** (fixed height, clamp long text).
 - **All data tables look the same**: build them with `tables.data_table()` inside `page_column()`. They fill the page
   height, only the body scrolls, header sticky, 52 px rows, coloured rail on the left edge, rows updated in place.
+- Polling pages use `polling.poll(interval, refresh)` (never a bare `ui.timer`): it pauses while the browser tab is hidden and refreshes once when it comes back. Polled reads call the client with `cached=True` (`devices`, `transactions`, `candidate_services`, `running_services`, `inventory`): all tabs share one answer for 3 s (30 s for services/inventory). Any write (non-GET) and any new/changed transaction clears the cache; screens that decide what gets committed (`pending.open_panel`) call `client.invalidate()` first. Never pass `cached=True` for forms that write back what they read.
 - Pages that poll (`POLL_SECONDS` = 5) must update table rows in place and only when data changed. Never rebuild the
   table (scroll position must survive).
 - No hard-coded colours in views: use the CSS variables / helper classes from `theme.py` (`mut`, `err-tx`, `warn-tx`,

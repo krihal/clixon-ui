@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import auth_views, connection, dashboard, device_views, inventory_views, nacm_views, network_views, rpc_views, service_views, views
+from . import auth_views, connection, dashboard, device_views, inventory_views, nacm_views, network_views, polling, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
@@ -46,6 +46,7 @@ async def shell():
         auth_views.forced_password_page(user)
         return
     connection.register(ui.context.client)
+    polling.install()
     access = auth_views.accounts.access_for(user)
     if access.view_only:
         ui.query("body").classes("view-only")  # theme.py hides everything marked .wr (controls that write)

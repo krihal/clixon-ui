@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, background_tasks, ui
 
-from . import accounts, auth_views, connection, db, device_views, network_views, rpc_views, service_views, shell, views  # noqa: F401  (shell registers the page)
+from . import accounts, auth_views, connection, db, device_views, httpdebug, network_views, rpc_views, service_views, shell, views  # noqa: F401  (shell registers the page)
 from .client import ClixonClient
 
 
@@ -25,6 +25,12 @@ def main() -> None:
     p.add_argument("--send-user", action="store_true", default=os.environ.get("CLIXON_UI_SEND_USER", "").lower() in ("1", "true", "yes"),
                    help="send the signed-in user name to the controller as X-Forwarded-User and HTTP_AUTHORIZATION (needs nginx: "
                         "fastcgi_param REMOTE_USER $http_x_forwarded_user; transactions otherwise show 'anonymous'); also CLIXON_UI_SEND_USER=1")
+    p.add_argument("--service-user", default=os.environ.get("CLIXON_UI_SERVICE_USER", "clixon-ui"),
+                   help="user name sent with --send-user for requests nobody is signed in for (startup schema load); "
+                        "give it read access in the controller's NACM; also CLIXON_UI_SERVICE_USER")
+    p.add_argument("--debug-http", action="store_true", default=os.environ.get("CLIXON_UI_DEBUG_HTTP", "").lower() in ("1", "true", "yes"),
+                   help="print every request sent to the controller (method, path, user header, status, time) and a summary "
+                        "per minute to stderr; also CLIXON_UI_DEBUG_HTTP=1")
     p.add_argument("--demo", action="store_true", default=os.environ.get("CLIXON_UI_DEMO", "").lower() in ("1", "true", "yes"),
                    help="run against a built-in fake controller with invented devices (no controller URL needed); any password signs in "
                         "as 'guest'; the data resets every 30 minutes; also CLIXON_UI_DEMO=1")
@@ -54,7 +60,11 @@ def main() -> None:
     views.client.write_guard = auth_views.write_guard
     if a.send_user:
         views.client.user_provider = auth_views.current_username
+        views.client.service_user = a.service_user
     connection.install(views.client)
+    if a.debug_http:
+        summary = httpdebug.install(views.client)
+        app.on_startup(lambda: background_tasks.create(summary(), name="http debug summary"))
     app.on_startup(service_views.preload)
     ui.run(host=a.host, port=a.port, title="Clixon UI", favicon=STATIC / "img" / "favicon.png", reload=a.reload, show=False,
            **({"uvicorn_reload_dirs": str(Path(__file__).parent), "uvicorn_reload_includes": "*.py"} if a.reload else {}),

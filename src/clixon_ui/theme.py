@@ -85,6 +85,11 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-btn.bg-primary:hover{background:color-mix(in srgb,var(--acc) 24%,var(--panel))!important}
 .q-btn.bg-negative:hover{background:color-mix(in srgb,var(--dan) 24%,var(--panel))!important}
 .q-btn.bg-primary .q-btn__content,.q-btn.bg-negative .q-btn__content,.q-btn.bg-primary .q-icon,.q-btn.bg-negative .q-icon{color:inherit!important}
+.q-tabs{border-bottom:1px solid var(--line-2)}
+.q-tab{color:var(--mut)!important;font-weight:600;font-size:14px;min-height:44px;padding:0 20px}
+.q-tab--active{color:var(--acc)!important;background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
+.q-tab:hover{background:var(--hover)}
+.q-tab__indicator{height:3px!important;color:var(--acc)!important}
 }
 .q-btn.q-btn--flat:not(.q-btn--round):hover{background:var(--hover)}
 .q-btn.q-btn--flat:not(.q-btn--round),.q-btn.q-btn--flat:not(.q-btn--round) .q-btn__content,.q-btn.q-btn--flat:not(.q-btn--round) .q-icon{color:var(--tx)!important}
@@ -151,6 +156,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-menu .q-item:hover,.q-menu .q-item--active{background:var(--hover)}
 body{--q-primary:var(--acc);--q-positive:var(--ok);--q-negative:var(--dan);--q-warning:var(--wa)}
 
+.avatar{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;font-size:30px;font-weight:700;background:color-mix(in srgb,var(--acc) 18%,var(--panel));color:var(--acc)}
 /* status pills */
 .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px 2px 8px;border-radius:99px;font-size:12px;font-weight:600}
 .pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}

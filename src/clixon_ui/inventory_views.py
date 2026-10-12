@@ -12,7 +12,7 @@ from urllib.parse import quote, unquote
 
 from nicegui import ui
 
-from . import diffview, views
+from . import diffview, pending, views
 from .client import RestconfError
 from .formdata import Lookup, entry_from_json, service_to_json, validate
 from .forms import render_children
@@ -178,16 +178,6 @@ async def _local_commit_dialog(title: str, extra=None) -> bool:
     return err is None
 
 
-def _connect_buttons(name: str, existed: bool):
-    """After a device was committed the controller needs a (re)connect to use the new settings."""
-    def build() -> None:
-        label = "Reconnect device" if existed else "Open device"
-        op = "RECONNECT" if existed else "OPEN"
-        ui.button(label, icon="power", on_click=lambda: views.run_tx(views.client.connection_change(name, op), f"{label} {name}")
-                  ).props("outline no-caps no-wrap").classes(BTN)
-    return build
-
-
 async def delete_flow(kind_key: str, key: str) -> bool:
     """Delete from the candidate, optionally followed by a (confirmed) commit. True when something was deleted."""
     kind = KINDS[kind_key]
@@ -329,56 +319,12 @@ async def inventory_form_page(kind: str, key: str = "", copy: str = "") -> None:
             status.set_text("Saved to the candidate (not committed)")
             ui.notify(f"Saved {spec.title.lower()} '{k}' to the candidate. Not committed yet.", type="positive")
 
-    async def with_pending(k: str, action):
-        """Run `action` with this form's edit temporarily in the candidate (if there is one), then take it out again."""
-        pending = dirty["v"] or not editing
-        if pending and not await write(k):
-            return None
-        try:
-            return await action()
-        finally:
-            if pending:
-                await revert(k)
-
-    async def review() -> None:
+    async def save_review() -> None:
         k = check()
-        if k is None:
-            return
-        try:
-            text = await with_pending(k, client.diff_datastores)
-        except RestconfError as e:
-            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
-            return
-        with ui.dialog() as d, ui.card().classes("w-[800px] max-w-full gap-2"):
-            ui.label("Pending changes in the candidate").classes("text-lg")
-            ui.label("This is everything that differs from the running configuration, not only this form. "
-                     + ("Your edits were applied temporarily to show it, then taken out again." if dirty["v"] or not editing else "")
-                     ).classes("mut text-sm")
-            with ui.scroll_area().classes("w-full").style("max-height:55vh"):
-                diffview.render(text or "")
-            ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-        d.open()
-
-    async def commit() -> None:
-        ctx = ui.context.client
-        k = check()
-        if k is None:
-            return
-        try:
-            text = await with_pending(k, client.diff_datastores)
-        except RestconfError as e:
-            ui.notify(str(e), type="negative", multi_line=True, close_button=True)
-            return
-        if not await _confirm_commit(f"Commit {spec.title.lower()} '{k}'?",
-                                     "A commit applies the whole candidate (all uncommitted changes, not only this form). "
-                                     "Nothing is pushed to the devices. This is what will change:", text or ""):
-            return
-        if (dirty["v"] or not editing) and not await write(k):
-            return
-        if await _local_commit_dialog(f"Committing {spec.title.lower()} {k}",
-                                      _connect_buttons(k, editing) if kind_key == "device" else None):
+        if k is not None and await write(k):
             dirty["v"] = False
-            views.navigate_to(spec.list_route, ctx)
+            status.set_text("Saved to the candidate (not committed)")
+            await pending.open_panel()
 
     async def delete_here() -> None:
         ctx = ui.context.client
@@ -394,10 +340,8 @@ async def inventory_form_page(kind: str, key: str = "", copy: str = "") -> None:
     with footer:
         ui.button("Save", icon="save", on_click=save).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate. Nothing takes effect until you commit.")
-        ui.button("Review", icon="preview", on_click=review).props("no-caps no-wrap outline").classes(BTN_BAR + " wr").tooltip(
-            "Show what would change compared to the running configuration, without saving")
-        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
-            "Save and commit the candidate. You are asked to confirm first.")
+        ui.button("Save & review", icon="rocket_launch", on_click=save_review).props("no-caps no-wrap outline").classes(BTN_BAR + " wr").tooltip(
+            "Save to the candidate, then review all pending changes and commit them.")
         # always shown (disabled for a new entry) so every button keeps its place
         ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR + " wr").set_enabled(editing)
         ui.button("Duplicate", icon="content_copy", on_click=lambda: ui.navigate.to(form_url(kind_key, copy=key))

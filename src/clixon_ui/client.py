@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import copy
+import functools
 import json
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -28,6 +31,23 @@ def user_headers(user: str) -> dict[str, str]:
     """Identify the acting user: X-Forwarded-User (nginx -> REMOTE_USER) and a literal HTTP_AUTHORIZATION header.
     nginx drops headers with underscores unless it has `underscores_in_headers on;` (it then passes HTTP_HTTP_AUTHORIZATION)."""
     return {USER_HEADER: user, "HTTP_AUTHORIZATION": user}
+
+
+LIGHT_TTL = 3.0  # seconds a polled read stays fresh: state that changes by itself (devices, transactions)
+HEAVY_TTL = 30.0  # bigger reads (services, inventory): refreshed sooner by any write or a new transaction
+
+
+def _cacheable(ttl: float):
+    """Let a read method take `cached=True`: tabs and pages that poll then share one answer for `ttl` seconds
+    instead of each asking the controller. Without `cached` the call always goes to the controller."""
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(self, *args, cached: bool = False, **kw):
+            if not cached:
+                return await fn(self, *args, **kw)
+            return await self._cached((fn.__name__, args, tuple(sorted(kw.items()))), ttl, lambda: fn(self, *args, **kw))
+        return wrapper
+    return deco
 
 
 class RestconfError(Exception):
@@ -61,6 +81,11 @@ class ClixonClient:
         self.url = url.rstrip("/")
         self._namespaces: dict[str, str] | None = None
         self.user_provider = None  # returns the signed-in user name; sent as X-Forwarded-User so the controller records who acted
+        self.service_user = "clixon-ui"  # sent when no one is signed in (startup schema load, background work)
+        self._cache: dict = {}  # (user, call) -> (expires, value); only reads made with cached=True
+        self._inflight: dict = {}  # (user, call) -> the running request, so equal reads at the same time share one
+        self._generation = 0  # bumped by every write: a read that started before it must not be stored
+        self._tx_sig = None  # newest transaction seen; a change means the controller did something
         self.write_guard = None  # called with the error text of a write; raises PermissionDenied when the session may not write
         self.on_unreachable = None  # called with the error each time the controller cannot be reached
         self._http = httpx.AsyncClient(
@@ -74,10 +99,52 @@ class ClixonClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    def invalidate(self) -> None:
+        """Forget cached reads (after a write, or before a screen that must show the controller's current state)."""
+        self._cache.clear()
+        self._generation += 1
+
+    async def _cached(self, key: tuple, ttl: float, load) -> Any:
+        k = (self.user_provider() if self.user_provider else None, key)  # NACM may let users read different things
+        hit = self._cache.get(k)
+        if hit and hit[0] > time.monotonic():
+            return copy.deepcopy(hit[1])
+        task = self._inflight.get(k)
+        if task is None:
+            generation = self._generation
+
+            async def run():
+                try:
+                    value = await load()
+                    if generation == self._generation:
+                        self._cache[k] = (time.monotonic() + ttl, value)
+                    return value
+                finally:
+                    if self._inflight.get(k) is task:
+                        del self._inflight[k]
+
+            task = self._inflight[k] = asyncio.ensure_future(run())
+        return copy.deepcopy(await asyncio.shield(task))
+
+    def _note_transactions(self, trs: list[dict]) -> None:
+        """A new or changed transaction means devices, services or inventory may have changed: forget every cached read."""
+        last = trs[-1] if trs else {}
+        sig = (len(trs), last.get("tid"), last.get("state"), last.get("result"))
+        if self._tx_sig is not None and sig != self._tx_sig:
+            self.invalidate()
+        self._tx_sig = sig
+
     async def _request(self, method: str, path: str, **kw: Any) -> dict:
+        try:
+            return await self._request_inner(method, path, **kw)
+        finally:
+            if method != "GET":
+                self.invalidate()
+
+    async def _request_inner(self, method: str, path: str, **kw: Any) -> dict:
         if self.write_guard and is_write(method, path, kw.get("json"), _read_rpc.get()):
             self.write_guard()
-        if self.user_provider and (user := self.user_provider()):
+        if self.user_provider and (user := self.user_provider() or self.service_user):
             kw["headers"] = {**kw.get("headers", {}), **user_headers(user)}
         for attempt in range(3 if method == "GET" else 1):
             try:
@@ -96,12 +163,15 @@ class ClixonClient:
             raise RestconfError(_error_message(resp))
         return resp.json() if resp.content.strip() else {}
 
+    async def yang_modules(self) -> list[dict]:
+        """The controller's YANG library: one entry per module (name, revision, namespace, submodules)."""
+        lib = await self.get("ietf-yang-library:yang-library/module-set=top")
+        return lib["ietf-yang-library:module-set"][0]["module"]
+
     async def namespaces(self) -> dict[str, str]:
         """module name -> XML namespace, from the controller's YANG library (cached)."""
         if self._namespaces is None:
-            lib = await self.get("ietf-yang-library:yang-library/module-set=top")
-            mods = lib["ietf-yang-library:module-set"][0]["module"]
-            self._namespaces = {m["name"]: m["namespace"] for m in mods if "namespace" in m}
+            self._namespaces = {m["name"]: m["namespace"] for m in await self.yang_modules() if "namespace" in m}
         return self._namespaces
 
     async def edit_config(self, tree: dict) -> None:
@@ -119,6 +189,7 @@ class ClixonClient:
         return out.get(f"{NS}:output", out)
 
     # -- devices -----------------------------------------------------------
+    @_cacheable(LIGHT_TTL)
     async def devices(self) -> list[dict]:
         # State alone omits devices that have none (DISABLED/never connected), so merge the shallow config too.
         state = await self.get(f"{NS}:devices?content=nonconfig")
@@ -271,11 +342,13 @@ class ClixonClient:
         data = await self.get(f"{NS}:services?content=config")
         return data.get(f"{NS}:services", {})
 
+    @_cacheable(HEAVY_TTL)
     async def candidate_services(self) -> dict:
         """Services subtree of the candidate datastore (includes pending, uncommitted edits)."""
         data = await self._request("GET", f"/ds/ietf-datastores:candidate/{NS}:services")
         return data.get(f"{NS}:services", {})
 
+    @_cacheable(HEAVY_TTL)
     async def running_services(self) -> dict:
         data = await self._request("GET", f"/ds/ietf-datastores:running/{NS}:services")
         return data.get(f"{NS}:services", {})
@@ -292,6 +365,7 @@ class ClixonClient:
     # -- inventory: devices, device groups, profiles, templates ---------------------------------------
     INV = "/ds/ietf-datastores:candidate/clixon-controller:devices"
 
+    @_cacheable(HEAVY_TTL)
     async def inventory(self) -> dict:
         """All inventory lists of the candidate, shallow (`depth=3`): names and settings, but no device config."""
         data = await self._request("GET", f"{self.INV}?content=config&depth=3")
@@ -391,13 +465,18 @@ class ClixonClient:
     async def delete_service(self, module: str, name: str, key: str, keys: list[str]) -> None:
         await self.edit_config({f"{NS}:services": {f"{module}:{name}": [Op("remove", self._key_entry(keys, key))]}})
 
-    async def transactions(self) -> list[dict]:
+    @_cacheable(LIGHT_TTL)
+    async def transactions(self, summary: bool = False) -> list[dict]:
+        """All transactions. `summary=True` leaves out the per-device results (`depth=3`): enough for lists and
+        counters, and much smaller when the controller keeps a long history. Use `transaction(tid)` for the details."""
         try:
-            data = await self.get(f"{NS}:transactions")
+            data = await self.get(f"{NS}:transactions" + ("?depth=3" if summary else ""))
         except RestconfError:
             return []  # "Instance does not exist" when empty
         t = data.get(f"{NS}:transactions", {})
-        return _as_list(t.get("transaction", [])) if isinstance(t, dict) else []
+        trs = _as_list(t.get("transaction", [])) if isinstance(t, dict) else []
+        self._note_transactions(trs)
+        return trs
 
     async def transaction(self, tid: int | str) -> dict | None:
         try:
@@ -411,17 +490,25 @@ class ClixonClient:
         """Poll until the transaction reaches DONE (or vanishes after being seen).
         `on_update(tr)` is called on every poll in which the transaction is visible."""
         seen: dict | None = None
+        misses = 0
         async with asyncio.timeout(timeout):
             while True:
-                tr = next((t for t in await self.transactions() if str(t.get("tid")) == str(tid)), None)
+                try:  # one transaction, not the whole history
+                    data = await self.get(f"{NS}:transactions/transaction={tid}")
+                    tr = next(iter(_as_list(data.get(f"{NS}:transaction", []))), None)
+                except RestconfError:
+                    tr = None
                 if tr:
-                    seen = tr
+                    seen, misses = tr, 0
                     if on_update:
                         on_update(tr)
                     if tr.get("state") == "DONE":
+                        self.invalidate()  # the controller has changed state: cached reads are out of date
                         return tr
                 elif seen:
-                    return seen
+                    misses += 1
+                    if misses >= 3:  # gone from the history (or the controller keeps failing): give up with what we saw
+                        return seen
                 await asyncio.sleep(interval)
 
 

@@ -3,34 +3,56 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from urllib.parse import quote, unquote
 
 from nicegui import ui
 
-from . import diffview, views
+from . import pending, views
 from .client import RestconfError
 from .formdata import (Lookup, entry_from_json, property_entries, property_key, property_to_json, service_to_json,
                        validate)
 from .forms import render_children
 from .style import BTN, BTN_BAR, BTN_TOOLBAR
 from .tables import RAIL_SERVICE, data_table, page_column
-from .schema import Node, Schema, load_schema
-from .servicechanges import changed_instances
+from .schema import Node, Schema, load_schema, module_list
 
 _schema_task: asyncio.Task | None = None
 
 
-def preload() -> None:
-    """Start loading the YANG schema in the background (call from app startup)."""
-    global _schema_task
-    _schema_task = asyncio.create_task(load_schema(views.client))
+SCHEMA_RECHECK_SECONDS = 60  # how often the YANG library is looked at to see whether modules changed
+_schema_checked = 0.0
+
+
+def preload(force: bool = False) -> None:
+    """Start loading the YANG schema in the background (call from app startup). `force`: fetch every module again."""
+    global _schema_task, _schema_checked
+    _schema_task = asyncio.create_task(load_schema(views.client, force=force))
+    _schema_checked = time.monotonic()
 
 
 async def get_schema() -> Schema:
-    global _schema_task
+    """The parsed schema. At most once a minute the controller's module list (a small read) is compared with the one the
+    schema was built from; if modules were added, removed or got a new revision, the schema is loaded again."""
+    global _schema_task, _schema_checked
     if _schema_task is None or (_schema_task.done() and _schema_task.exception()):
         preload()  # first use, or retry after a failed load
-    return await asyncio.shield(_schema_task)
+    schema = await asyncio.shield(_schema_task)
+    if time.monotonic() - _schema_checked > SCHEMA_RECHECK_SECONDS:
+        _schema_checked = time.monotonic()
+        try:
+            if module_list(await views.client.yang_modules()) != schema.modules:
+                preload()
+                schema = await asyncio.shield(_schema_task)
+        except RestconfError:
+            pass  # keep what we have; the next page load looks again
+    return schema
+
+
+async def reload_schema() -> None:
+    """For a YANG file that changed without a new revision: nothing else can tell, so the user asks."""
+    preload(force=True)
+    await get_schema()
 
 
 def _instances(svc: Node, services: dict) -> list[dict]:
@@ -69,79 +91,6 @@ def _secs(tr: dict) -> str:
         return ""
 
 
-async def commit_diff_dialog(title: str, what: str, instance: str | None = None, note: str = "", after=None, commit=None) -> None:
-    """Run service actions on the candidate (nothing pushed), showing progress, then the per-device diff.
-
-    `after` is an async cleanup run as soon as the services finished (before results are shown).
-    `what` describes in words which services run; `instance` is a controller service-instance
-    (force re-apply of that one) or None (run all services whose config changed).
-    `commit` (async, optional) adds a Commit button: it closes this dialog and starts the commit flow."""
-    steps = ("INIT", "ACTIONS", "RESOLVED", "DONE")
-    with ui.dialog().props("persistent") as wait, ui.card().classes("w-[460px]"):
-        ui.label("Running services").classes("text-lg")
-        ui.label(what).classes("text-sm text-gray-400")
-        with ui.row().classes("items-center gap-2"):
-            ui.spinner(size="sm")
-            stage = ui.label("Starting transaction…")
-        bar = ui.linear_progress(value=0.05, show_value=False).props("instant-feedback")
-        detail = ui.label().classes("text-xs text-gray-500")
-    wait.open()
-
-    def update(tr: dict) -> None:
-        st = tr.get("state", "INIT")
-        bar.set_value((steps.index(st) + 1) / len(steps) if st in steps else 0.1)
-        nice = {"INIT": "Transaction started", "ACTIONS": "Service scripts running",
-                "RESOLVED": "Service output received, computing device config", "DONE": "Done"}
-        stage.set_text(f"{nice.get(st, st)} (tid {tr.get('tid')})")
-        detail.set_text(tr.get("description", ""))
-
-    err = None
-    try:
-        tr, diff = await views.client.commit_diff(instance, on_update=update)
-    except (RestconfError, TimeoutError) as e:
-        tr, diff, err = None, "", str(e)
-    finally:
-        if after:
-            try:
-                await after()
-            except RestconfError as e:
-                ui.notify(f"Could not restore candidate: {e}", type="negative", multi_line=True, close_button=True, timeout=0)
-        wait.close()
-    try:
-        devs = await views.client.devices()
-    except RestconfError:
-        devs = []
-    closed = [d["name"] for d in devs if d.get("conn-state") != "OPEN"]
-    ok = bool(tr) and tr.get("result") == "SUCCESS"
-    with ui.dialog() as d, ui.card().classes("w-[900px] max-w-full"):
-        ui.label(title).classes("text-lg")
-        with ui.row().classes("items-center gap-2"):
-            ui.icon("check_circle" if ok else "error", color="positive" if ok else "negative")
-            ui.label(what).classes("text-sm")
-        if tr:
-            ui.label(f"Transaction {tr.get('tid')}: {tr.get('result', tr.get('state'))} · {tr.get('description', '')} · {_secs(tr)}"
-                     ).classes("text-xs text-gray-400")
-            if tr.get("warning"):
-                ui.label(f"Warning: {tr['warning']}").classes("text-xs warn-tx")
-        ui.label((note + " " if note else "") + "Nothing was pushed to the devices.").classes("text-sm text-gray-400")
-        if closed:
-            ui.label(f"Not connected: {', '.join(closed)}. Services cannot produce a diff for closed devices — "
-                     "open them on the Devices page first.").classes("text-sm warn-tx")
-        if ok:
-            diffview.render(diff)
-        else:
-            reason = err or (tr or {}).get("reason") or (tr or {}).get("result") or "no result"
-            ui.label(f"Service run failed: {reason.strip()}").classes("err-tx whitespace-pre-wrap")
-        with ui.row():
-            ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-            if commit and ok:
-                async def do_commit() -> None:
-                    d.close()
-                    await commit()
-                ui.button("Commit", icon="rocket_launch", color="negative", on_click=do_commit).props("no-caps no-wrap").classes(BTN)
-    d.open()
-
-
 STAGES = ("INIT", "ACTIONS", "RESOLVED", "DONE")
 STAGE_TEXT = {"INIT": "Transaction started", "ACTIONS": "Service scripts running",
               "RESOLVED": "Computing device config", "DONE": "Done"}
@@ -173,98 +122,11 @@ def _progress(title: str, what: str):
     return dlg, update
 
 
-def _others_text(others: list[str]) -> str:
-    return ("The candidate also contains uncommitted changes to other services: " + ", ".join(others[:8])
-            + (f" and {len(others) - 8} more" if len(others) > 8 else "") +
-            ". A commit applies the whole candidate, so these are committed too.")
-
-
-async def commit_flow(name: str, instance: str | None, *, own: str | None = None, apply=None, revert=None,
-                      reviewed: bool = False) -> bool:
-    """Commit one service instance (or, with instance=None, every service whose config changed) after asking.
-
-    1. Dry run (no push) to learn which devices would change, plus a check for other uncommitted candidate edits.
-    2. A confirmation dialog that shows exactly that. Nothing is committed unless the user agrees.
-    3. The real commit, with progress, and a result dialog.
-    `apply`/`revert` (async, optional) put a pending edit into the candidate temporarily for step 1 and take it out
-    again; `apply` is called once more right before the commit. With `reviewed=True` the user has just seen the
-    diff (Commit diff dialog): skip the dry run and the diff, and only ask when other services would be committed too.
-    `own` is how the instance appears in the candidate-vs-running comparison ("l2c 'X'"). Returns True when the commit succeeded."""
-    client = views.client
-    if reviewed:
-        others = []
-        try:
-            if instance is not None:
-                others = [c for c in changed_instances(await client.candidate_services(), await client.running_services()) if c != own]
-        except (RestconfError, TimeoutError):
-            pass
-        if others:
-            with ui.dialog() as d, ui.card().classes("w-[560px] gap-2"):
-                ui.label(f"Commit {name}?").classes("text-lg")
-                ui.label(_others_text(others)).classes("warn-tx text-sm")
-                with ui.row().classes("justify-end w-full"):
-                    ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-                    ui.button("Commit anyway", icon="rocket_launch", color="negative",
-                              on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
-            confirmed = await d
-            _dispose(d)
-            if not confirmed:
-                return False
-        return await _run_commit(name, lambda upd: client.commit_service(instance, on_update=upd), apply=apply)
-    dlg, update = _progress("Checking what will be committed", f"Dry run for {name}: nothing is pushed yet")
-    tr, diff, cand, run, err = None, "", {}, {}, None
-    try:
-        if apply:
-            await apply()
-        try:
-            tr, diff = await client.commit_diff(instance, on_update=update)
-            cand, run = await client.candidate_services(), await client.running_services()
-        finally:
-            if revert:
-                await revert()
-    except (RestconfError, TimeoutError) as e:
-        err = str(e) or type(e).__name__
-    finally:
-        dlg.close()
-        _dispose(dlg)
-    if err or not tr or tr.get("result") != "SUCCESS":
-        with ui.dialog() as d, ui.card().classes("w-[560px] gap-2"):
-            ui.label("Cannot commit").classes("text-lg")
-            ui.label((err or (tr or {}).get("reason") or "The dry run failed").strip()).classes("err-box whitespace-pre-wrap w-full")
-            ui.button("Close", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-        d.open()
-        return False
-
-    secs = diffview.parse(diff)
-    others = [c for c in changed_instances(cand, run) if c != own] if instance is not None else []
-    with ui.dialog() as d, ui.card().classes("w-[900px] max-w-full gap-2"):
-        ui.label(f"Commit {name}?").classes("text-lg")
-        ui.label("This pushes the configuration to the devices below and commits it."
-                 if secs else "No device configuration changes. Only the controller's own configuration is committed.").classes("mut")
-        if secs:
-            with ui.column().classes("w-full gap-2 overflow-auto").style("max-height:55vh"):
-                diffview.render(diff)
-        if others:
-            ui.label(_others_text(others)).classes("warn-tx text-sm")
-        with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
-            ui.button("Commit anyway" if others else "Commit", icon="rocket_launch", color="negative",
-                      on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
-    confirmed = await d
-    _dispose(d)
-    if not confirmed:
-        return False
-
-    return await _run_commit(name, lambda upd: client.commit_service(instance, on_update=upd), apply=apply)
-
-
-async def _run_commit(name: str, runner, *, apply=None, verb: str = "Commit") -> bool:
+async def _run_commit(name: str, runner, *, verb: str = "Commit") -> bool:
     """Run the real commit transaction with progress and show its result. `runner(update)` starts and awaits it."""
     dlg, update = _progress(f"{ {'Commit': 'Committing', 'Delete': 'Deleting'}.get(verb, verb) } {name}", "Pushing to the devices and committing")
     tr, err = None, None
     try:
-        if apply:
-            await apply()
         tr = await runner(update)
     except (RestconfError, TimeoutError) as e:
         err = str(e) or type(e).__name__
@@ -335,7 +197,23 @@ async def delete_flow(svc: Node, key: str) -> bool:
 
 async def services_overview():
     schema = await _prologue()
-    ui.label("Services").classes("text-2xl")
+    with ui.row().classes("w-full items-center"):
+        ui.label("Services").classes("text-2xl")
+        ui.space()
+
+        async def reload() -> None:
+            client = ui.context.client
+            ui.notify("Loading the YANG schema again…")
+            try:
+                await reload_schema()
+            except Exception as e:  # noqa: BLE001 - show anything to the user
+                ui.notify(f"Could not load the schema: {e}", type="negative", multi_line=True, close_button=True)
+                return
+            views.reload_page(client)
+
+        ui.button("Reload YANG", icon="refresh", on_click=reload).props("outline no-caps no-wrap dense").classes(BTN_TOOLBAR).tooltip(
+            "Fetch the controller's YANG modules again. New revisions are picked up by themselves; use this when a module "
+            "changed without a new revision.")
     if schema is None:
         return
     services = await views.guarded(views.client.candidate_services()) or {}
@@ -385,21 +263,10 @@ async def service_type_page(qname: str):
             ui.label(svc.name).classes("text-2xl")
             ui.label(f"{len(rows)} instances").classes("mut")
 
-        async def commit_changed(reviewed: bool = False) -> None:
-            client = ui.context.client
-            if await commit_flow("all changed services", None, reviewed=reviewed):
-                views.reload_page(client)
-
         with ui.row().classes("w-full items-center gap-3"):
-            ui.button("Commit diff", icon="preview",
-                      on_click=lambda: commit_diff_dialog(
-                          "Device diff for changed services", "Running all services whose configuration has changed in candidate",
-                          commit=lambda: commit_changed(True))
-                      ).props("dense no-caps no-wrap outline").classes(BTN).tooltip(
-                "Run service actions on the candidate and show the device diff. Nothing is pushed.")
-
-            ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_changed).props("dense no-caps no-wrap").classes(BTN + " wr").tooltip(
-                "Push every service whose configuration changed in the candidate to the devices and commit")
+            ui.button("Review & commit", icon="rocket_launch", color="negative", on_click=lambda: pending.open_panel()).props(
+                "dense no-caps no-wrap").classes(BTN + " wr").tooltip(
+                "Show everything pending (candidate and device changes) and commit it")
             flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
             ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(f"/services/{quote(qname)}/form")
                       ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
@@ -415,21 +282,14 @@ async def service_type_page(qname: str):
             <q-td :props="props"><span :class="'pill ' + (props.value == 'Deployed' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
         table.add_slot("body-cell-act", """
             <q-td :props="props" class="row-actions">
-              <q-btn flat dense round size="md" icon="visibility" @click.stop="$parent.$emit('diff', props.row.key)"><q-tooltip>Commit diff: show what would change on the devices</q-tooltip></q-btn>
-              <q-btn flat dense round size="md" icon="rocket_launch" class="wr act-commit" @click.stop="$parent.$emit('commit', props.row.key)"><q-tooltip>Commit this service to the devices…</q-tooltip></q-btn>
+                            <q-btn flat dense round size="md" icon="rocket_launch" class="wr act-commit" @click.stop="$parent.$emit('commit', props.row.key)"><q-tooltip>Review and re-apply this service on the devices…</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="edit" class="wr" @click.stop="$parent.$emit('edit', props.row.key)"><q-tooltip>Edit</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="content_copy" class="wr" @click.stop="$parent.$emit('dup', props.row.key)"><q-tooltip>Duplicate</q-tooltip></q-btn>
               <q-btn flat dense round size="md" icon="delete" class="wr act-del" @click.stop="$parent.$emit('del', props.row.key)"><q-tooltip>Delete</q-tooltip></q-btn>
             </q-td>""")
-        async def commit_row(key: str, reviewed: bool = False) -> None:
-            client = ui.context.client
+        async def commit_row(key: str) -> None:
             name = f"{svc.name} '{key}'"
-            if await commit_flow(name, views.client.service_instance(svc.name, svc.keys[0], key), own=name, reviewed=reviewed):
-                views.reload_page(client)
-
-        table.on("diff", lambda e: commit_diff_dialog(
-            f"Device diff for {svc.name} '{e.args}'", f"Re-applying service {svc.name} '{e.args}' (force)",
-            views.client.service_instance(svc.name, svc.keys[0], e.args), commit=lambda: commit_row(e.args, True)))
+            await pending.open_panel(views.client.service_instance(svc.name, svc.keys[0], key), name)
 
         table.on("commit", lambda e: commit_row(e.args))
         table.on("dup", lambda e: ui.navigate.to(f"/services/{quote(qname)}/form?copy={quote(e.args, safe='')}"))
@@ -458,7 +318,6 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
     lookup = await _load_lookup(services)
     editing = bool(key)
     data: dict = {}
-    original: dict = {}  # instance as it is in candidate now, for reverting a temporary apply
     preserved: dict = {}  # controller-managed nodes hidden from the form; must survive the PUT
     if editing:
         found = next((e for e in _instances(svc, services) if str(e.get("service-name")) == key), None)
@@ -467,7 +326,6 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
             return
         data = entry_from_json(svc, found)
         preserved = {k: v for k, v in found.items() if k == "created"}
-        original = found
     key_leaf = svc.keys[0]
     if copy and not editing:
         src = next((e for e in _instances(svc, services) if str(e.get(key_leaf)) == copy), None)
@@ -543,54 +401,10 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
         if (k := await persist()) is None:
             return
         ui.notify(f"Saved {svc.name} '{k}' to candidate", type="positive")
-        ui.navigate.to("/commit" if review else f"/services/{quote(qname)}")
-
-    async def revert_edit(k: str) -> None:
-        """Put the candidate back exactly as it was before this form's edit was applied."""
-        if editing:
-            await views.client.put_service(svc.module, svc.name, k, {f"{svc.module}:{svc.name}": [original]})
+        if review:
+            await pending.open_panel()
         else:
-            await views.client.delete_service(svc.module, svc.name, k, svc.keys)
-
-    async def commit_click(reviewed: bool = False) -> None:
-        """Commit this instance. Pending form edits are applied only for the dry run, then reverted; they are saved
-        for real only if the user confirms."""
-        client = ui.context.client
-        k = check()
-        if k is None:
-            return
-        name = f"{svc.name} '{k}'"
-        pending = dirty["v"] or not editing
-
-        async def apply_edit() -> None:
-            if not await write(k):
-                raise RestconfError("The controller did not accept the change")
-
-        ok = await commit_flow(name, views.client.service_instance(svc.name, key_leaf, k), own=name,
-                               apply=apply_edit if pending else None,
-                               revert=(lambda: revert_edit(k)) if pending else None, reviewed=reviewed)
-        if ok:
-            dirty["v"] = False
-            if editing:
-                views.reload_page(client)  # fresh `created` and status
-            else:
-                views.navigate_to(f"/services/{quote(qname)}", client)
-
-    async def preview() -> None:
-        """Commit diff of this instance. Edits are applied to candidate only temporarily and reverted."""
-        k = check()
-        if k is None:
-            return
-        title, what = f"Device diff for {svc.name} '{k}'", f"Re-applying service {svc.name} '{k}' (force)"
-        inst = views.client.service_instance(svc.name, key_leaf, k)
-        if editing and not dirty["v"]:
-            await commit_diff_dialog(title, what, inst, commit=lambda: commit_click(True))  # nothing to apply, candidate untouched
-            return
-        if not await write(k):
-            return
-
-        await commit_diff_dialog(title, what, inst, after=lambda: revert_edit(k), commit=lambda: commit_click(True),
-                                 note="Your edits were applied temporarily to compute this diff and then reverted; the candidate is unchanged.")
+            ui.navigate.to(f"/services/{quote(qname)}")
 
     async def delete_here() -> None:
         client = ui.context.client
@@ -600,10 +414,8 @@ async def service_form_page(qname: str, key: str = "", copy: str = ""):
     with footer:
         ui.button("Save", icon="save", on_click=lambda: save(False)).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Save to the candidate datastore. Nothing is pushed to the devices.")
-        ui.button("Commit diff", icon="preview", on_click=preview).props("no-caps no-wrap outline").classes(BTN_BAR).tooltip(
-            "Show what this would change on the devices, without saving. Nothing is pushed.")
-        ui.button("Commit", icon="rocket_launch", color="negative", on_click=commit_click).props("no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
-            "Push this service to the devices and commit. You are asked to confirm first.")
+        ui.button("Save & review", icon="rocket_launch", on_click=lambda: save(True)).props("no-caps no-wrap outline").classes(BTN_BAR + " wr").tooltip(
+            "Save to the candidate, then review all pending changes and commit them.")
         # always shown (disabled for a new instance) so every button keeps its place
         ui.button("Delete", icon="delete", on_click=delete_here).props("outline no-caps no-wrap").classes(BTN_BAR + " wr").tooltip(
             "Delete this instance (from the candidate, or from the devices too)").set_enabled(editing)

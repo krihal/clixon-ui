@@ -1,4 +1,4 @@
-"""Sign-in, forced password change, the user's own page (/account) and user administration (/admin)."""
+"""Sign-in, forced password change, and the account page (/account): your own account, plus user administration for admins."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .client import PermissionDenied
 from .db import User
 from .service_views import _dispose
 from .style import BTN, BTN_TOOLBAR
-from .tables import RAIL_INVENTORY, data_table, page_column
+from .tables import RAIL_INVENTORY, data_table
 
 UID, NAME = "uid", "username"
 
@@ -87,8 +87,10 @@ def sign_out() -> None:
 
 
 # ---------------------------------------------------------------------------------------------- sign in
-def _password_input(label: str, **kw) -> ui.input:
-    return ui.input(label, password=True, password_toggle_button=True, **kw).props("outlined dense").classes("w-full")
+def _password_input(label: str, autocomplete: str = "current-password", **kw) -> ui.input:
+    """`autocomplete` tells the browser's password manager what the field is: current-password (sign in, confirm),
+    new-password (it then offers to generate and save one)."""
+    return ui.input(label, password=True, password_toggle_button=True, **kw).props(f"outlined dense autocomplete={autocomplete}").classes("w-full")
 
 
 @ui.page("/login")
@@ -115,7 +117,7 @@ def login_page() -> None:
             ui.label("Sign in").classes("text-xl")
             if views.DEMO:
                 ui.label("This is a demo with fake devices. Type anything, or just press Sign in.").classes("mut text-sm")
-            name = ui.input("User name").props("outlined dense autofocus").classes("w-full")
+            name = ui.input("User name").props("outlined dense autofocus autocomplete=username").classes("w-full")
             password = _password_input("Password")
             error = ui.label().classes("err-tx text-sm")
             ui.button("Sign in", on_click=submit).props("no-caps no-wrap").classes("w-full h-9 !min-h-0")
@@ -124,7 +126,7 @@ def login_page() -> None:
 
 
 # ---------------------------------------------------------------------------------------------- password change
-def _password_form(user: User, forced: bool) -> None:
+def _password_form(user: User, forced: bool, wide: bool = False) -> None:
     def save() -> None:
         if new.value != again.value:
             error.set_text("The two new passwords differ.")
@@ -143,9 +145,16 @@ def _password_form(user: User, forced: bool) -> None:
                 f.set_value("")
             error.set_text("")
 
-    current = _password_input("Current password" if not forced else "Temporary (current) password")
-    new = _password_input("New password")
-    again = _password_input("New password again")
+    # the (invisible) user name lets the password manager store the new password for the right account
+    ui.input(value=user.username).props("autocomplete=username readonly tabindex=-1 aria-hidden=true").classes("absolute opacity-0 pointer-events-none h-0 w-0")
+    # wide: the current password on its own row, the two new ones side by side
+    with ui.element("div").classes("w-full grid gap-3").style(
+            "grid-template-columns:repeat(2,minmax(0,1fr))" if wide else "grid-template-columns:1fr"):
+        current = _password_input("Current password" if not forced else "Temporary (current) password")
+        if wide:
+            current.style("grid-column:1/-1")
+        new = _password_input("New password", autocomplete="new-password")
+        again = _password_input("New password again", autocomplete="new-password")
     error = ui.label().classes("err-tx text-sm")
     again.on("keydown.enter", save)
     ui.button("Change password", on_click=save).props("no-caps no-wrap").classes(BTN)
@@ -163,17 +172,72 @@ def forced_password_page(user: User) -> None:
             ui.button("Sign out", on_click=sign_out).props("flat no-caps no-wrap").classes(BTN)
 
 
-def account_page() -> None:
+def _users_summary() -> tuple[int, str]:
+    with db.session() as s:
+        users = accounts.users(s)
+    admins, view_only = sum(u.is_admin for u in users), sum(u.view_only and not u.is_admin for u in users)
+    parts = [f"{admins} admin{'s' if admins != 1 else ''}"] + ([f"{view_only} view-only"] if view_only else [])
+    return len(users), ", ".join(parts)
+
+
+def _my_account(user: User, on_manage=None) -> None:
+    """Profile card on the left; password (and, for admins, a users summary) on the right."""
+    row = _row(user)
+    with ui.element("div").classes("w-full flex flex-wrap gap-4 items-stretch").style("max-width:1100px"):
+        with ui.card().classes("gap-4 p-6 items-center").style("flex:0 0 320px;max-width:100%"):
+            ui.label(user.username[:2].upper()).classes("avatar")
+            with ui.column().classes("items-center gap-1"):
+                ui.label(user.username).classes("text-xl font-semibold")
+                ui.html(f'<span class="pill pill-OPEN">{row["role"]}</span>')
+            with ui.grid(columns="100px 1fr").classes("gap-x-4 gap-y-2 text-sm w-full"):
+                for label, value in (("Access", row["mode"]), ("Pages", row["pages"]), ("Last sign-in", row["last"])):
+                    ui.label(label).classes("mut")
+                    ui.label(value)
+            ui.space()  # pushes Sign out to the bottom when the card is stretched to the height of the right column
+            ui.button("Sign out", icon="logout", on_click=sign_out).props("outline no-caps no-wrap").classes("w-full h-9 !min-h-0")
+        with ui.column().classes("gap-4").style("flex:1 1 380px;min-width:0"):
+            with ui.card().classes("gap-3 p-6 w-full"):
+                ui.label("Change password").classes("text-lg font-semibold")
+                ui.label("Your browser can generate and save a strong password.").classes("mut text-sm")
+                _password_form(user, forced=False, wide=True)
+            if on_manage:
+                n, detail = _users_summary()
+                with ui.card().classes("p-6 w-full"):
+                    with ui.row().classes("items-center gap-5 w-full no-wrap"):
+                        ui.label(str(n)).classes("text-3xl font-bold")
+                        with ui.column().classes("gap-0 grow"):
+                            ui.label("Users").classes("text-lg font-semibold")
+                            ui.label(f"{detail}. Add people or change what they can see.").classes("mut text-sm")
+                        ui.button("Manage users", on_click=on_manage).props("no-caps no-wrap").classes(BTN)
+
+
+def account_page(tab: str = "users") -> None:
+    """Your own account for everyone; admins also get the user list (`?tab=users`, the default)."""
     user = current_user()
-    ui.label("Your account").classes("text-2xl")
-    with ui.card().classes("w-[420px] gap-1"):
-        ui.label(user.username).classes("text-lg")
-        role = "Admin" if user.is_admin else "User"
-        ui.label(f"{role}, {'view-only' if user.view_only else 'can make changes'}").classes("mut text-sm")
-    with ui.card().classes("w-[420px] gap-3"):
-        ui.label("Change password").classes("text-lg")
-        _password_form(user, forced=False)
-    ui.button("Sign out", icon="logout", on_click=sign_out).props("outline no-caps no-wrap").classes(BTN)
+    ui.label("Account").classes("text-2xl")
+    if not user.is_admin:
+        _my_account(user)
+        return
+    view = ui.toggle({"users": "Users", "account": "Your account"}, value="account" if tab == "account" else "users").props(
+        "no-caps no-wrap dense unelevated padding=9px\u00a024px toggle-color=primary color=transparent text-color=dark")
+    users_box = ui.column().classes("w-full gap-3")
+    account_box = ui.column().classes("w-full gap-4")
+    with users_box:
+        _users_panel(user)
+    with account_box:
+        _my_account(user, on_manage=lambda: view.set_value("users"))
+
+    def show() -> None:
+        users_box.set_visibility(view.value == "users")
+        account_box.set_visibility(view.value == "account")
+
+    view.on_value_change(show)
+    show()
+
+
+def admin_page() -> None:
+    """Old address of the user list: it lives on the account page now."""
+    ui.navigate.to("/account?tab=users")
 
 
 # ---------------------------------------------------------------------------------------------- administration
@@ -286,32 +350,29 @@ async def _user_dialog(username: str | None, acting: User) -> bool:
     return changed
 
 
-async def admin_page() -> None:
-    acting = current_user()
+def _users_panel(acting: User) -> None:
     with db.session() as s:
         rows = [_row(u) for u in accounts.users(s)]
-    with page_column():
-        with ui.row().classes("w-full items-center h-11 shrink-0"):
-            ui.label("Users").classes("text-2xl")
-            ui.label(f"{len(rows)}").classes("mut")
-        with ui.row().classes("w-full items-center gap-3"):
-            flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
+    with ui.row().classes("w-full items-center shrink-0"):
+        ui.label(f"{len(rows)} user{'s' if len(rows) != 1 else ''}").classes("mut")
+    with ui.row().classes("w-full items-center gap-3"):
+        flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
 
-            async def add() -> None:
-                ctx = ui.context.client
-                if await _user_dialog(None, acting):
-                    views.reload_page(ctx)
-
-            ui.button("Add user", icon="add", on_click=add).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
-        cols = [{"name": c, "label": label, "field": c, "align": "left", "sortable": True}
-                for c, label in (("username", "User"), ("role", "Role"), ("mode", "Access"), ("pages", "Pages"), ("status", "Status"), ("last", "Last sign-in"))]
-        cols[0]["classes"] = "name"
-        table = data_table(cols, rows, "username", RAIL_INVENTORY)
-        table.bind_filter_from(flt, "value")
-
-        async def edit(e) -> None:
+        async def add() -> None:
             ctx = ui.context.client
-            if await _user_dialog(e.args[1]["username"], acting):
+            if await _user_dialog(None, acting):
                 views.reload_page(ctx)
 
-        table.on("rowClick", edit)
+        ui.button("Add user", icon="add", on_click=add).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
+    cols = [{"name": c, "label": label, "field": c, "align": "left", "sortable": True}
+            for c, label in (("username", "User"), ("role", "Role"), ("mode", "Access"), ("pages", "Pages"), ("status", "Status"), ("last", "Last sign-in"))]
+    cols[0]["classes"] = "name"
+    table = data_table(cols, rows, "username", RAIL_INVENTORY, height="calc(100vh - var(--header-h) - 230px)")
+    table.bind_filter_from(flt, "value")
+
+    async def edit(e) -> None:
+        ctx = ui.context.client
+        if await _user_dialog(e.args[1]["username"], acting):
+            views.reload_page(ctx)
+
+    table.on("rowClick", edit)
