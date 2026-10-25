@@ -131,6 +131,7 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 
 ## Guides (step-by-step procedures, `guide*.py`)
 
+- `/guides` is a grid of equal-size cards with live search (every word must match the name, description, step titles or commands; cards are hidden/shown in place) and an All / Only reads / Changes things filter; the run history tab is a normal data table.
 - Menu "Guides" (`/guides`, `?tab=history`), editor `/guides/{gid}/edit` (`new`), runner `/guide-runs/{rid}`. **Admins author, everyone runs**; view-only users only run guides whose steps are all read-only (`Guide.read_only`, set on save).
 - A guide is JSON (`schema_version` 1, export/import as a file). Steps: text, confirm, input (sets `{{var}}`), rpc, check (a read-only RPC + rules on the reply, all targets must pass), wait (seconds, or poll a check until it passes, max 1800 s), connection (`connection-change`), pull (`config-pull`). Variables only come from input steps; targets are fixed or `{{var}}`. `guide.validate` is the single source of truth for what is allowed.
 - **Writes are always confirmed** (`guide.needs_confirmation`: non-read-only rpc, connection, pull). The author cannot turn that off. Nothing is sent before the operator clicks "Run this step" (tested).

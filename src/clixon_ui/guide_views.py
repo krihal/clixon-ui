@@ -11,7 +11,7 @@ from .guide import GuideError
 from .guide_run_views import status_text
 from .service_views import _dispose
 from .style import BTN, BTN_TOOLBAR
-from .tables import RAIL_GUIDE, RAIL_RUN, data_table, page_column
+from .tables import RAIL_RUN, data_table, page_column
 
 TOGGLE = "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark"
 
@@ -43,46 +43,69 @@ async def guides_page(tab: str = "guides") -> None:
 
 # ---------------------------------------------------------------------------------------------- list
 def _list() -> None:
+    """The guides as a grid of cards of one size. The search box looks at the name, the description, the step titles and the
+    commands of the steps, every word must match; the toggle narrows to guides that only read or that change things.
+    Cards are hidden and shown in place, never rebuilt, so typing does not flicker."""
     admin, access = is_admin(), auth_views.current_access()
     with db.session() as s:
-        rows = [{"id": g.id, "name": g.name, "descr": g.description, "steps": len(g.steps), "reads": g.read_only,
-                 "kind": "Only reads" if g.read_only else "Changes things", "version": g.version,
-                 "updated": f"{_when(g.updated_at)} · {g.updated_by}"} for g in guides.list_guides(s)]
+        items = [{"id": g.id, "name": g.name, "descr": g.description, "steps": len(g.steps), "reads": g.read_only, "version": g.version,
+                  "updated": f"Updated {_when(g.updated_at)} by {g.updated_by}",
+                  "hay": " ".join([g.name, g.description, *(st.get("title", "") for st in g.steps),
+                                   *(guide.summarize(st) for st in g.steps)]).lower()} for g in guides.list_guides(s)]
     with ui.row().classes("w-full items-center gap-3"):
-        flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("grow min-w-52")
+        search = ui.input(placeholder="Search guides, steps and commands…").props("dense outlined clearable debounce=150").classes("grow min-w-52")
+        with search.add_slot("prepend"):
+            ui.icon("search")
+        kind = ui.toggle({"all": "All", "reads": "Only reads", "writes": "Changes things"}, value="all").props(TOGGLE)
+        count = ui.label().classes("mut text-sm")
         if admin:
             ui.button("Import", icon="upload", on_click=lambda: import_dialog()).props("outline dense no-caps no-wrap").classes(BTN_TOOLBAR)
             ui.button("New guide", icon="add", on_click=lambda: ui.navigate.to("/guides/new/edit")).props("dense no-caps no-wrap").classes(BTN_TOOLBAR)
-    table = data_table(
-        [{"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
-         {"name": "descr", "label": "Description", "field": "descr", "align": "left",
-          "style": "max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},
-         {"name": "steps", "label": "Steps", "field": "steps", "align": "right", "sortable": True},
-         {"name": "kind", "label": "Effect", "field": "kind", "align": "left"},
-         {"name": "version", "label": "Version", "field": "version", "align": "right"},
-         {"name": "updated", "label": "Updated", "field": "updated", "align": "left"},
-         {"name": "act", "label": "", "field": "id", "align": "right"}],
-        rows, "id", RAIL_GUIDE)
-    table.bind_filter_from(flt, "value")
-    admin_buttons = """
-          <q-btn flat dense round size="md" icon="edit" @click.stop="$parent.$emit('edit', props.row.id)"><q-tooltip>Edit</q-tooltip></q-btn>
-          <q-btn flat dense round size="md" icon="download" @click.stop="$parent.$emit('export', props.row.id)"><q-tooltip>Export as JSON</q-tooltip></q-btn>
-          <q-btn flat dense round size="md" icon="delete" class="act-del" @click.stop="$parent.$emit('del', props.row.id)"><q-tooltip>Delete</q-tooltip></q-btn>""" if admin else ""
-    table.add_slot("body-cell-act", f"""
-        <q-td :props="props" class="row-actions">
-          <q-btn flat dense round size="md" icon="play_arrow" @click.stop="$parent.$emit('run', props.row.id)"><q-tooltip>Run</q-tooltip></q-btn>{admin_buttons}
-        </q-td>""")
-    table.on("run", lambda e: start_dialog(int(e.args), access))
-    table.on("rowClick", lambda e: start_dialog(int(e.args[1]["id"]), access))
-    table.on("edit", lambda e: ui.navigate.to(f"/guides/{e.args}/edit"))
-    table.on("export", lambda e: export(int(e.args)))
-    table.on("del", lambda e: delete_dialog(int(e.args)))
-    if not rows:
-        with ui.column().classes("w-full items-center py-8 gap-1"):
-            ui.icon("menu_book", size="lg").classes("mut")
-            ui.label("No guides yet").classes("font-medium")
-            ui.label("An admin can build one with New guide, or import a guide file." if not admin
-                     else "Build one with New guide, or import a guide file.").classes("mut text-sm")
+    empty = ui.column().classes("w-full items-center py-8 gap-1")
+    with empty:
+        ui.icon("menu_book", size="lg").classes("mut")
+        empty_title = ui.label().classes("font-medium")
+        empty_hint = ui.label().classes("mut text-sm")
+    cards: list[tuple[dict, ui.card]] = []
+    with ui.element("div").classes("w-full grid gap-4 grow content-start").style(
+            "grid-template-columns:repeat(auto-fill,minmax(300px,1fr));min-height:0;overflow:auto;padding:2px"):
+        for it in items:
+            with ui.card().classes("w-full h-48 cursor-pointer hover:border-primary overflow-hidden gap-1").on(
+                    "click", lambda _, i=it["id"]: start_dialog(i, access)) as card:
+                with ui.row().classes("items-center w-full no-wrap gap-2"):
+                    ui.icon("menu_book").classes("text-primary")
+                    ui.label(it["name"]).classes("text-lg font-medium grow truncate")
+                ui.label("Only reads" if it["reads"] else "Changes things").classes("pill " + ("pill-OPEN" if it["reads"] else "pill-other"))
+                ui.label(it["descr"] or "No description.").classes("text-sm mut line-clamp-3")
+                ui.space()
+                with ui.row().classes("items-center w-full no-wrap gap-0"):
+                    ui.label(f"{it['steps']} steps · version {it['version']}").classes("mut text-xs grow").tooltip(it["updated"])
+                    for icon, tip, fn, cls in (("play_arrow", "Run", lambda i=it["id"]: start_dialog(i, access), ""),
+                                               *((("edit", "Edit", lambda i=it["id"]: ui.navigate.to(f"/guides/{i}/edit"), ""),
+                                                  ("download", "Export as JSON", lambda i=it["id"]: export(i), ""),
+                                                  ("delete", "Delete", lambda i=it["id"]: delete_dialog(i), "act-del")) if admin else ())):
+                        ui.button(icon=icon, on_click=fn).props("flat round dense").classes(cls).tooltip(tip).on("click.stop", lambda: None)
+            cards.append((it, card))
+
+    def apply() -> None:
+        words = (search.value or "").lower().split()
+        shown = 0
+        for it, card in cards:
+            ok = all(w in it["hay"] for w in words) and (kind.value == "all" or (kind.value == "reads") == it["reads"])
+            card.set_visibility(ok)
+            shown += ok
+        count.set_text(f"{shown} of {len(cards)}")
+        empty.set_visibility(shown == 0)
+        if not cards:
+            empty_title.set_text("No guides yet")
+            empty_hint.set_text("Build one with New guide, or import a guide file." if admin else "An admin can build one with New guide, or import a guide file.")
+        else:
+            empty_title.set_text("No guide matches")
+            empty_hint.set_text("Try fewer words, or switch the filter to All.")
+
+    search.on_value_change(apply)
+    kind.on_value_change(apply)
+    apply()
 
 
 async def start_dialog(guide_id: int, access) -> None:
