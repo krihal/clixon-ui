@@ -103,8 +103,10 @@ def show_log_entry(e: dict) -> None:
             ui.icon(icon, color=color, size="sm")
             ui.label(e["title"]).classes("font-medium")
             ui.label({"ok": "", "failed": "failed", "skipped": "skipped", "aborted": "aborted"}[e["outcome"]]).classes("mut text-sm")
-        if e.get("value"):
-            ui.label(f"{{{{{e['var']}}}}} = {e['value']}").classes("text-sm font-mono ml-8")
+        if e.get("value"):  # the answer, with the variable it was saved as in small print
+            with ui.row().classes("items-baseline gap-2 ml-8"):
+                ui.label(e["value"]).classes("text-sm font-mono")
+                ui.label(f"saved as {e['var']}").classes("mut text-xs")
         if e.get("error"):
             ui.label(e["error"]).classes("err-box whitespace-pre-wrap text-sm ml-8")
         if e.get("note"):
