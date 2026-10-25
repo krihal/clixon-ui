@@ -7,6 +7,7 @@ when something changed (a redraw while typing an answer would lose the text)."""
 from __future__ import annotations
 
 import json
+from html import escape
 
 from nicegui import ui
 
@@ -44,10 +45,30 @@ def step_status(guide_body: dict, state: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------------------------- results of steps
+def _text_html(lines: list[str]) -> str:
+    return "".join(f'<div class="cl"><span class="ln">{i}</span>{escape(ln)}</div>' for i, ln in enumerate(lines, 1))
+
+
+def show_reply(out, truncated: bool) -> None:
+    """A device reply as text (CLI output as printed, structured data like configuration) with a JSON view next to it."""
+    lines, cut = guide.reply_lines(out)
+    view = ui.toggle({"text": "Text", "json": "JSON"}, value="text").props(
+        "dense no-caps unelevated toggle-color=primary color=transparent text-color=dark")
+    text = ui.html(_text_html(lines) or '<div class="cl mut">Empty reply</div>').classes("confbody w-full").style("height:auto;max-height:50vh")
+    raw = ui.code(out if isinstance(out, str) else json.dumps(out, indent=2), language="json").classes("w-full").style("max-height:50vh;overflow:auto")
+    text.bind_visibility_from(view, "value", lambda v: v == "text")
+    raw.bind_visibility_from(view, "value", lambda v: v == "json")
+    if cut:
+        ui.label("Long output: the text view is cut, see JSON.").classes("warn-tx text-sm")
+    if truncated:
+        ui.label(f"Reply cut at {guide.OUTPUT_LIMIT // 1024} KB in the run log.").classes("warn-tx text-sm")
+
+
 def show_results(results: list[dict]) -> None:
-    """One expandable card per target: verdict, the rules that were checked, the reply."""
+    """One card per target: verdict, the rules that were checked, the reply. The reply is open for an RPC step (it is what
+    the operator came for) and folded away for a check (the rules are the point); a card is open when it is the only one or failed."""
     for r in results:
-        with ui.expansion(value=not r["ok"]).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
+        with ui.expansion(value=not r["ok"] or len(results) == 1).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
             with ex.add_slot("header"):
                 with ui.row().classes("items-center gap-2 w-full no-wrap"):
                     ui.icon("check_circle" if r["ok"] else "error", color="positive" if r["ok"] else "negative", size="sm")
@@ -59,12 +80,11 @@ def show_results(results: list[dict]) -> None:
                     ui.icon("check" if rule["ok"] else "close", color="positive" if rule["ok"] else "negative", size="xs").classes("mt-1")
                     ui.label(rule["text"]).classes("text-sm font-mono")
             if "output" in r:
-                out = r["output"]
-                with ui.expansion("Reply").classes("w-full").props("dense"):
-                    ui.code(out if isinstance(out, str) else json.dumps(out, indent=2), language="json").classes("w-full").style(
-                        "max-height:40vh;overflow:auto")
-                    if r.get("truncated"):
-                        ui.label(f"Reply cut at {guide.OUTPUT_LIMIT // 1024} KB in the run log.").classes("warn-tx text-sm")
+                if r.get("rules") is not None:  # a check: the reply is evidence, not the result
+                    with ui.expansion("Reply").classes("w-full").props("dense"):
+                        show_reply(r["output"], r.get("truncated", False))
+                else:
+                    show_reply(r["output"], r.get("truncated", False))
 
 
 def show_log_entry(e: dict) -> None:

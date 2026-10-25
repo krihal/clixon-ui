@@ -40,7 +40,38 @@ GUIDE = {
 }
 
 
+HEALTH_NAME = "Health check before maintenance (demo)"
+
+HEALTH_GUIDE = {
+    "name": HEALTH_NAME,
+    "description": "Read-only: confirm a switch answers as itself, a port is up, and look at its LLDP neighbours and IS-IS state "
+                   "before you start work on it. Nothing is changed, so view-only users may run it. Written for the Arista "
+                   "and OpenConfig demo switches.",
+    "steps": [
+        {"id": "s1", "type": "input", "title": "Which switch?", "var": "device", "label": "Switch to check", "kind": "device",
+         "default": "demo-eos-1", "choices": []},
+        {"id": "s2", "type": "input", "title": "Which port matters?", "var": "port", "label": "Port that must be up", "kind": "text",
+         "default": "Ethernet1", "choices": []},
+        {"id": "s3", "type": "check", "title": "The switch answers as itself", **probe({"get-system-state": {}}),
+         "rules": [{"path": "system/state/hostname", "op": "equals", "value": "{{device}}"}]},
+        {"id": "s4", "type": "check", "title": "The port is up", **probe({"get-interface-state": {"interface-name": "{{port}}"}}),
+         "rules": [{"path": "interfaces/interface/state/admin-status", "op": "equals", "value": "UP"},
+                   {"path": "interfaces/interface/state/oper-status", "op": "equals", "value": "UP"},
+                   {"path": "interfaces/interface/state/counters/in-errors", "op": "equals", "value": "0"}]},
+        {"id": "s5", "type": "rpc", "title": "LLDP neighbours", **probe({"get-lldp-neighbors": {}})},
+        {"id": "s6", "type": "rpc", "title": "IS-IS state", **probe({"get-isis-state": {}})},
+        {"id": "s7", "type": "confirm", "title": "Does it look right?",
+         "question": "Do the neighbours and IS-IS adjacencies of **{{device}}** match what you expect before maintenance?"},
+    ],
+}
+
+GUIDES = [GUIDE, HEALTH_GUIDE]
+
+
 def seed(db: Session) -> None:
-    """Add the example guide while the demo has no guide at all."""
-    if not guides.list_guides(db):
-        guides.save(db, GUIDE, "demo")
+    """Add the example guides that are missing, by name. Runs at every demo start, so a database from an older version
+    gets new examples; an example the visitor deleted comes back at the next start."""
+    have = {g.name for g in guides.list_guides(db)}
+    for g in GUIDES:
+        if g["name"] not in have:
+            guides.save(db, g, "demo")

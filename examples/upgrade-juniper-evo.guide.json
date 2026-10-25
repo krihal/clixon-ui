@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "name": "Upgrade a Juniper EVO router",
+  "description": "Image download, validation and installation with reboot, as a guided procedure. The software, file and request commands are Junos CLI commands sent as RPCs; check them against your devices with Pick from device RPCs before relying on them. Snapshot, drain and undrain are instructions, because they are not controller RPCs.",
+  "steps": [
+    {
+      "id": "s1",
+      "type": "input",
+      "title": "Which router?",
+      "var": "device",
+      "label": "Router to upgrade",
+      "kind": "device",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s2",
+      "type": "text",
+      "title": "Before you start",
+      "text": "Guided upgrade of **{{device}}**.\n\nThis guide follows the manual procedure: look at what is installed, get the new image onto the router, validate it, drain the router, install with a reboot, then reconnect and compare.\n\nSteps that change the router are confirmed one by one before they run."
+    },
+    {
+      "id": "s3",
+      "type": "confirm",
+      "title": "Take a snapshot of the router state",
+      "question": "Take a new snapshot of **{{device}}** now (`show_router_state`), so you can compare after the upgrade. Is it taken, or is the existing one recent enough?"
+    },
+    {
+      "id": "s4",
+      "type": "rpc",
+      "title": "Software installed",
+      "body": {
+        "command": "show system software"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s5",
+      "type": "rpc",
+      "title": "Images already on the router",
+      "body": {
+        "command": "file list /var/tmp/junos* detail"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s6",
+      "type": "input",
+      "title": "Image URL",
+      "var": "image_url",
+      "label": "Image URL (http/https)",
+      "kind": "text",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s7",
+      "type": "input",
+      "title": "Routing instance",
+      "var": "routing_instance",
+      "label": "Routing instance for the download",
+      "kind": "text",
+      "default": "mgmt_junos",
+      "choices": []
+    },
+    {
+      "id": "s8",
+      "type": "rpc",
+      "title": "Copy the image to the router",
+      "body": {
+        "command": "file copy {{image_url}} /var/tmp/ routing-instance {{routing_instance}}"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s9",
+      "type": "rpc",
+      "title": "Images on the router now",
+      "body": {
+        "command": "file list /var/tmp/junos* detail"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s10",
+      "type": "input",
+      "title": "Image to use",
+      "var": "image_path",
+      "label": "Full path of the image on the router",
+      "kind": "text",
+      "default": "/var/tmp/",
+      "choices": []
+    },
+    {
+      "id": "s11",
+      "type": "rpc",
+      "title": "Validate the image",
+      "body": {
+        "command": "request system software validate {{image_path}}"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s12",
+      "type": "confirm",
+      "title": "Validation passed",
+      "question": "Did the validation of `{{image_path}}` succeed? Only continue if it did."
+    },
+    {
+      "id": "s13",
+      "type": "confirm",
+      "title": "Drain the router",
+      "question": "Is **{{device}}** drained (`drain_router {{device}}`)? Skip draining only if it already is."
+    },
+    {
+      "id": "s14",
+      "type": "rpc",
+      "title": "Install and reboot",
+      "body": {
+        "command": "request system software add {{image_path}} reboot"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s15",
+      "type": "wait",
+      "title": "Wait for the reboot",
+      "seconds": 300
+    },
+    {
+      "id": "s16",
+      "type": "connection",
+      "title": "Open the connection",
+      "operation": "OPEN",
+      "device": "{{device}}"
+    },
+    {
+      "id": "s17",
+      "type": "rpc",
+      "title": "Version now running",
+      "body": {
+        "command": "show version"
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "id": "s18",
+      "type": "confirm",
+      "title": "Version is the expected one",
+      "question": "Is **{{device}}** running the version you installed (`{{image_path}}`)?"
+    },
+    {
+      "id": "s19",
+      "type": "text",
+      "title": "After the upgrade",
+      "text": "Undrain the router (`undrain_router {{device}}`) and compare with the snapshot (`show_router_state {{device}}`)."
+    }
+  ]
+}

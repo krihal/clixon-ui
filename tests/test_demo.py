@@ -180,18 +180,36 @@ async def test_service_properties_roundtrip(client):
     assert (await client.candidate_services())["properties"]["demo-defaults:demo-defaults"]["default-mtu"] == 9000
 
 
-def test_demo_guide_is_valid_and_seeded_once():
+def test_demo_guides_are_valid_and_seeded_once():
     from sqlalchemy.pool import StaticPool
 
     from clixon_ui import db, guide, guides
     from clixon_ui.demo import guides as demo_guides
 
-    assert guide.validate(demo_guides.GUIDE) == []
+    for g in demo_guides.GUIDES:
+        assert guide.validate(g) == []
+    assert guide.guide_is_read_only(demo_guides.HEALTH_GUIDE) and not guide.guide_is_read_only(demo_guides.GUIDE)
     engine = db.create_engine("sqlite://", poolclass=StaticPool)
     db.migrate(engine)
     with db.Session(engine, expire_on_commit=False) as s:
+        guides.save(s, demo_guides.GUIDE, "demo")  # a database from before the health check existed
         demo_guides.seed(s)
-        guides.delete(s, guides.list_guides(s)[0])
-        demo_guides.seed(s)  # seeds again: the table is empty again; a non-empty table is left alone
+        demo_guides.seed(s)  # nothing is added twice
+        assert [g.name for g in guides.list_guides(s)] == sorted(g["name"] for g in demo_guides.GUIDES)
+        edited = guides.get(s, guides.list_guides(s)[0].id)
+        edited.description = "edited by a visitor"
+        s.commit()
         demo_guides.seed(s)
-        assert [g.name for g in guides.list_guides(s)] == [demo_guides.NAME]
+        assert guides.get(s, edited.id).description == "edited by a visitor"  # an existing example is not overwritten
+
+
+async def test_demo_health_guide_passes_on_the_demo_switches():
+    from clixon_ui import demo, guide_exec
+    from clixon_ui.demo import guides as demo_guides
+
+    client, _ = demo.make_client()
+    values = {"device": "demo-eos-1", "port": "Ethernet1"}
+    for step in demo_guides.HEALTH_GUIDE["steps"]:
+        if step["type"] in ("check", "rpc"):
+            out = await guide_exec.execute_step(client, step, values)
+            assert out.ok, (step["title"], out.error)

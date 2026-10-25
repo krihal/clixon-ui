@@ -207,3 +207,21 @@ def test_summarize_every_step_of_the_sample():
     assert g.summarize(cli) == "show version on r1, group core"
     until = {"type": "wait", "until": {**probe(), "timeout": 600}}
     assert "until get-system-information on {{dev}} passes (max 600 s)" == g.summarize(until)
+
+
+def test_example_guides_in_the_repo_import():
+    from pathlib import Path
+    files = sorted(Path(__file__).parent.parent.joinpath("examples").glob("*.guide.json"))
+    assert files
+    for f in files:
+        assert g.import_guide(f.read_text())["steps"], f
+
+
+def test_reply_lines():
+    assert g.reply_lines(None) == ([], False)
+    assert g.reply_lines({"output": "a\nb\n"}) == (["a", "b"], False)  # CLI text as the device printed it
+    assert g.reply_lines({"rpc-reply": {"output": "x"}}) == (["x"], False)
+    assert g.reply_lines("cut text\nsecond") == (["cut text", "second"], False)
+    lines, cut = g.reply_lines({"software-information": {"host-name": "r1", "up": True}})
+    assert lines == ["software-information {", "    host-name r1;", "    up true;", "}"] and not cut
+    assert g.reply_lines({"output": {"a": 1}})[0][0].startswith("output")  # not a string: rendered like config

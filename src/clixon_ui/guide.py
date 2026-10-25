@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .confview import to_lines
 from .rpcutil import inline_is_read_only
 
 SCHEMA_VERSION = 1
@@ -357,3 +358,18 @@ def summarize(step: dict) -> str:
     if t == "connection":
         return f"{step.get('operation')} {step.get('device')}"
     return f"config pull {step.get('device')}" + (" (merge)" if step.get("merge") else "")
+
+
+def reply_lines(data: Any) -> tuple[list[str], bool]:
+    """A reply as text lines for display, and whether it was cut. CLI replies (`{"output": "..."}`, possibly under one
+    wrapper key) are shown as the device printed them; a reply that was cut for the log is already text; anything else
+    is rendered like device configuration."""
+    if data is None:
+        return [], False
+    if isinstance(data, str):
+        return data.splitlines(), False
+    inner = next(iter(data.values())) if isinstance(data, dict) and len(data) == 1 else None
+    for d in (data, inner):
+        if isinstance(d, dict) and len(d) == 1 and isinstance(d.get("output"), str):
+            return d["output"].splitlines(), False
+    return to_lines(data)
