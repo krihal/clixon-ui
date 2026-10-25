@@ -8,7 +8,7 @@ from datetime import datetime
 
 from nicegui import app, ui
 
-from . import accounts, db, theme, views
+from . import accounts, actor, db, theme, views
 from .access import Access
 from .accounts import AccountError
 from .client import PermissionDenied
@@ -24,10 +24,13 @@ UID, NAME = "uid", "username"
 def current_user() -> User | None:
     """The signed-in user, re-read from the database on every call so edits (disabled, demoted,
     view-only) take effect at once."""
-    try:
-        uid = app.storage.user.get(UID)
-    except RuntimeError:  # no browser session (background work outside a client context)
-        return None
+    if (who := actor.acting.get()) is not None:  # background work (a guide run) acting for a user
+        uid = who[0]
+    else:
+        try:
+            uid = app.storage.user.get(UID)
+        except RuntimeError:  # no browser session (background work outside a client context)
+            return None
     if uid is None:
         return None
     with db.session() as s:
@@ -51,6 +54,8 @@ def write_guard() -> None:
 
 def current_username() -> str | None:
     """Cheap (no database): the name remembered at sign-in, for every RESTCONF request."""
+    if (who := actor.acting.get()) is not None:
+        return who[1]
     try:
         return app.storage.user.get(NAME) if app.storage.user.get(UID) is not None else None
     except RuntimeError:

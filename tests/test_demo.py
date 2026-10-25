@@ -178,3 +178,20 @@ async def test_service_properties_roundtrip(client):
     assert props["default-mtu"] == 9214
     await client.put_property("demo-defaults", "demo-defaults", {"demo-defaults:demo-defaults": {**props, "default-mtu": 9000}})
     assert (await client.candidate_services())["properties"]["demo-defaults:demo-defaults"]["default-mtu"] == 9000
+
+
+def test_demo_guide_is_valid_and_seeded_once():
+    from sqlalchemy.pool import StaticPool
+
+    from clixon_ui import db, guide, guides
+    from clixon_ui.demo import guides as demo_guides
+
+    assert guide.validate(demo_guides.GUIDE) == []
+    engine = db.create_engine("sqlite://", poolclass=StaticPool)
+    db.migrate(engine)
+    with db.Session(engine, expire_on_commit=False) as s:
+        demo_guides.seed(s)
+        guides.delete(s, guides.list_guides(s)[0])
+        demo_guides.seed(s)  # seeds again: the table is empty again; a non-empty table is left alone
+        demo_guides.seed(s)
+        assert [g.name for g in guides.list_guides(s)] == [demo_guides.NAME]

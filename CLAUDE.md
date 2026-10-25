@@ -32,6 +32,10 @@ uv run pytest -q
 | `service_views.py` | Services overview, instance table, create/edit/duplicate form, "commit diff" dialog |
 | `device_views.py` | Device configuration viewer (`/devices/<name>`) |
 | `rpc_views.py` | RPC page: Run (templates/custom), Available RPCs, CLI tabs |
+| `guide.py` / `guide_runner.py` / `guide_exec.py` / `guides.py` | Guides: pure format + validation + check rules / pure run state machine / controller calls + server-side `RunController` / DB access |
+| `guide_views.py` / `guide_run_views.py` / `guide_edit_views.py` | Guides UI: list + run history + import/export / runner page / editor (admins) |
+| `rpcrun.py` | `run_on_targets` (one device RPC on devices/groups, at most 4 parallel); shared by the RPC page, the map and guides |
+| `actor.py` | ContextVar naming the user a background run acts for (user header, view-only guard) |
 | `network.py` | Pure: discovery sources (`SOURCES`), `Adjacency`, `build_graph`, `filter_graph`, `group_links`, `radial_positions` |
 | `network_views.py` | Network page: user-triggered discovery, ECharts map, links table |
 | `schema.py` | Loads the controller's YANG (`get-schema`), parses with pyang into `Node`/`YType` |
@@ -124,6 +128,17 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 ## Account page (`auth_views.py`)
 
 - One page, `/account` (header user link): everyone sees "Your account" (password, sign out); admins get a second tab "Users" (`?tab=users`) for user administration. `/admin` is only a redirect to that tab. There is no separate Admin header button.
+
+## Guides (step-by-step procedures, `guide*.py`)
+
+- Menu "Guides" (`/guides`, `?tab=history`), editor `/guides/{gid}/edit` (`new`), runner `/guide-runs/{rid}`. **Admins author, everyone runs**; view-only users only run guides whose steps are all read-only (`Guide.read_only`, set on save).
+- A guide is JSON (`schema_version` 1, export/import as a file). Steps: text, confirm, input (sets `{{var}}`), rpc, check (a read-only RPC + rules on the reply, all targets must pass), wait (seconds, or poll a check until it passes, max 1800 s), connection (`connection-change`), pull (`config-pull`). Variables only come from input steps; targets are fixed or `{{var}}`. `guide.validate` is the single source of truth for what is allowed.
+- **Writes are always confirmed** (`guide.needs_confirmation`: non-read-only rpc, connection, pull). The author cannot turn that off. Nothing is sent before the operator clicks "Run this step" (tested).
+- A run lives in a `guide_exec.RunController` (registry `_active`), runs steps in an asyncio task, and **keeps going when the page is closed**. State is stored in `guide_runs` after every change, together with a copy of the guide. After a UI restart a run that was `running` becomes `failed` ("check the device, then retry or skip"): never repeat a write automatically. The page polls `controller.rev` once a second and redraws only on change.
+- The controller client reads the acting user from `actor.acting` when there is no browser session; `auth_views.current_user/current_username` honour it, so the user header and the view-only guard work for background runs.
+- RPC output is kept at 64 KB per target in the log (`guide.clip_output`). Abort stops waiting but cannot recall a controller transaction already under way (logged).
+- Demo: `demo/guides.py` seeds one example guide when there is none. The demo `guest` is not an admin, so demo visitors can run but not edit. To look at the editor, start `--demo --database-url sqlite:///x.db` and set `is_admin` on `guest` in that file first.
+- Verified against the demo controller only, not a live controller.
 
 ## Pending changes panel (`pending.py`)
 

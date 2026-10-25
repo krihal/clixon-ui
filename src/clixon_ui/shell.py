@@ -5,7 +5,7 @@ from pathlib import Path
 
 from nicegui import app, ui
 
-from . import auth_views, connection, dashboard, device_views, inventory_views, nacm_views, network_views, polling, rpc_views, service_views, views
+from . import auth_views, connection, dashboard, device_views, guide_edit_views, guide_run_views, guide_views, inventory_views, nacm_views, network_views, polling, rpc_views, service_views, views
 
 # Must be registered before the catch-all page below, otherwise that page answers /static/... first.
 app.add_static_files("/static", Path(__file__).parent / "static")
@@ -28,6 +28,9 @@ ROUTES = {
     "/commit": views.commit_page,
     "/transactions": views.transactions_page,
     "/rpc": rpc_views.rpc_page,
+    "/guides": guide_views.guides_page,
+    "/guides/{gid}/edit": guide_edit_views.edit_page,
+    "/guide-runs/{rid}": guide_run_views.run_page,
     "/restconf": views.raw_page,  # raw RESTCONF console: reachable by URL (admins only), deliberately not in the menu
     "/account": auth_views.account_page,
     "/admin": auth_views.admin_page,

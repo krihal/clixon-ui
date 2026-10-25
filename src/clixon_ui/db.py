@@ -7,7 +7,7 @@ import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, create_engine, select
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -40,6 +40,38 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(255))
+
+
+
+class Guide(Base):
+    __tablename__ = "guides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    steps: Mapped[list] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer, default=1)  # +1 whenever the steps change
+    read_only: Mapped[bool] = mapped_column(Boolean, default=False)  # every step is read-only: view-only users may run it
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GuideRun(Base):
+    """One execution. The guide is copied in, so editing or deleting the guide never changes a run."""
+
+    __tablename__ = "guide_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    guide_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)  # None once the guide is deleted
+    guide_name: Mapped[str] = mapped_column(String(120))
+    guide_version: Mapped[int] = mapped_column(Integer)
+    guide: Mapped[dict] = mapped_column(JSON)  # {"name", "description", "steps"} as it was at the start
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    state: Mapped[dict] = mapped_column(JSON)  # guide_runner state: status, index, values, log
+    status: Mapped[str] = mapped_column(String(16), index=True)  # copy of state["status"], for listing
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 _factory: sessionmaker[Session] | None = None

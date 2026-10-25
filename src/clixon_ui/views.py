@@ -38,6 +38,7 @@ MENU = [
     ]),
     ("Operations", [
         ("/rpc", "RPC", "terminal"),
+        ("/guides", "Guides", "menu_book"),
         ("/transactions", "Transactions", "receipt_long"),
     ]),
 ]
@@ -56,7 +57,7 @@ def menu_route(path: str) -> str:
     p = path.split("?")[0].rstrip("/") or "/"
     for prefix, route in (("/services", "/services"), ("/service-properties", "/services"), ("/groups", "/groups"), ("/profiles", "/profiles"),
                           ("/templates", "/templates"), ("/network", "/network"), ("/commit", "/commit"),
-                          ("/transactions", "/transactions"), ("/rpc", "/rpc"), ("/nacm", "/nacm"),
+                          ("/transactions", "/transactions"), ("/rpc", "/rpc"), ("/guides", "/guides"), ("/guide-runs", "/guides"), ("/nacm", "/nacm"),
                           ("/admin", "/admin"), ("/account", "/account"), ("/restconf", "/restconf")):
         if p == prefix or p.startswith(prefix + "/"):
             return route

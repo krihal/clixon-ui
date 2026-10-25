@@ -13,6 +13,8 @@ RAIL_SERVICE = "row.status == 'Deployed' ? 'rail-ok' : 'rail-warn'"  # has the s
 
 RAIL_LINK = "row.status == 'one side' ? 'rail-warn' : 'rail-ok'"  # a link only one end reported is less certain
 RAIL_INVENTORY = "'rail-ok'"  # plain lists: no state to colour by
+RAIL_GUIDE = "row.reads ? 'rail-ok' : 'rail-warn'"  # only reads vs changes things
+RAIL_RUN = "row.status == 'done' ? 'rail-ok' : (row.status == 'failed' || row.status == 'aborted') ? 'rail-bad' : 'rail-warn'"
 RAIL_RPC = "row.type == 'read' ? 'rail-ok' : 'rail-warn'"  # read-only vs may change the device
 
 FILL_HEIGHT = "calc(100vh - var(--header-h) - 32px)"  # viewport minus header and page padding

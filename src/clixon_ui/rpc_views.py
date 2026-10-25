@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from html import escape
 
@@ -12,6 +11,7 @@ from . import views
 from .client import RestconfError
 from .confview import to_lines
 from .rpcutil import cli_request, is_read_only, rpc_name, substitute, template_vars
+from .rpcrun import run_on_targets
 from .rpcschema import RpcIndex
 from .style import BTN
 from .tables import RAIL_RPC, data_table
@@ -25,26 +25,6 @@ CUSTOM_EXAMPLE = '''{
 
 def _text_html(lines: list[str]) -> str:
     return "".join(f'<div class="cl"><span class="ln">{i}</span>{escape(ln)}</div>' for i, ln in enumerate(lines, 1))
-
-
-async def run_on_targets(client, req: dict, devs: list[str], grps: list[str]) -> list[tuple[str, dict]]:
-    """Run one RPC (template or inline) on devices/groups, at most 4 at a time; returns (label, result) pairs."""
-    jobs = [(d, {"device": d}) for d in devs] + [(f"group {g}", {"group": g}) for g in grps]
-    gate = asyncio.Semaphore(4)  # the controller's web server answers 502 under heavy parallelism
-
-    async def job(label: str, tgt: dict) -> tuple[str, dict]:
-        async with gate:
-            try:
-                tid = await client.run_rpc(template=req.get("template"), inline=req.get("inline"),
-                                           variables=req.get("variables"), **tgt)
-                tr = await client.wait_transaction(tid, timeout=120, interval=0.5)
-                if not tr or tr.get("result") != "SUCCESS":
-                    return label, {"error": (tr or {}).get("reason", "failed").strip() or "failed", "tid": tid}
-                return label, {"tid": tid, "replies": await client.rpc_result(tid), "tr": tr}
-            except (RestconfError, TimeoutError) as e:
-                return label, {"error": str(e)}
-
-    return list(await asyncio.gather(*(job(lbl, t) for lbl, t in jobs)))
 
 
 def _show_results(done: list[tuple[str, dict]]) -> None:

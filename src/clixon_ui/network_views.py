@@ -12,7 +12,7 @@ from . import views
 from .client import RestconfError
 from .network import (DEFAULT_OVERLAY, DEFAULT_SOURCE, OVERLAYS, SOURCES, Graph, build_graph, apply_overlay, filter_graph,
                       group_links, isis_status, metric_text, radial_positions)
-from .rpc_views import run_on_targets
+from .rpcrun import run_on_targets
 from .style import BTN
 from .tables import RAIL_LINK, data_table, page_column
 
