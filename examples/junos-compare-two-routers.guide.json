@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "name": "Compare two Junos routers",
+  "description": "Read-only: one step sent to two routers gives one summary per router, so differences in software or IS-IS adjacencies are easy to spot side by side. The paths of the system and interface replies are written from the Junos models and have not been checked against your devices: use Try it in the editor to confirm them and click the right values if one differs.",
+  "steps": [
+    {
+      "id": "s1",
+      "type": "input",
+      "title": "First router",
+      "var": "first",
+      "label": "First router",
+      "kind": "device",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s2",
+      "type": "input",
+      "title": "Second router",
+      "var": "second",
+      "label": "Second router",
+      "kind": "device",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s3",
+      "type": "rpc",
+      "title": "Identity of both",
+      "body": {
+        "get-system-information": {}
+      },
+      "target": {
+        "devices": [
+          "{{first}}",
+          "{{second}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "system-information/host-name",
+          "label": "Hostname"
+        },
+        {
+          "path": "system-information/hardware-model",
+          "label": "Model"
+        },
+        {
+          "path": "system-information/os-name",
+          "label": "OS"
+        },
+        {
+          "path": "system-information/os-version",
+          "label": "Version"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "rpc",
+      "title": "IS-IS adjacencies of both",
+      "body": {
+        "get-isis-adjacency-information": {}
+      },
+      "target": {
+        "devices": [
+          "{{first}}",
+          "{{second}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "isis-adjacency-information/isis-adjacency/interface-name",
+          "label": "Interface"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/system-name",
+          "label": "Neighbour"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/level",
+          "label": "Level"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/adjacency-state",
+          "label": "State"
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "type": "confirm",
+      "title": "Do they match?",
+      "question": "Are **{{first}}** and **{{second}}** on the software version and with the neighbours you expect?"
+    }
+  ]
+}

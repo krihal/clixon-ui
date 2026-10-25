@@ -233,3 +233,68 @@ async def test_demo_guides_with_fields_summarise_every_reply():
                 assert cells and "—" not in cells, (g["name"], step["title"], entry["target"])  # every chosen field found a value
                 seen += 1
     assert seen == 4 + 2 + 2 + 7  # report 4 steps, compare 2 switches in 2 steps, versions 7 switches
+
+
+async def test_more_demo_guides_run_through_on_the_demo_controller():
+    from clixon_ui import demo, guide_exec
+    from clixon_ui.demo import guides as demo_guides
+
+    async def no_sleep(_):
+        pass
+
+    client, _ = demo.make_client()
+    values = {"device": "demo-openconfig-3", "port": "Ethernet2", "ticket": "CHG-1", "kind": "planned"}
+    for g in (demo_guides.AUDIT_GUIDE, demo_guides.RECONNECT_GUIDE, demo_guides.COUNTERS_GUIDE, demo_guides.CHECKLIST_GUIDE):
+        for step in g["steps"]:
+            if step["type"] in ("text", "confirm", "input"):
+                continue
+            out = await guide_exec.execute_step(client, step, values, sleep=no_sleep)
+            assert out.ok, (g["name"], step["title"], out.error)
+            for entry in out.detail.get("results", []):
+                if entry.get("summary"):
+                    cells = [c for row in entry["summary"]["rows"] for c in row]
+                    assert "—" not in cells, (g["name"], step["title"])
+
+
+async def test_group_and_serial_guides_on_the_demo_controller():
+    from clixon_ui import demo, guide_exec
+    from clixon_ui.demo import guides as demo_guides, seed
+
+    client, _ = demo.make_client()
+    for group, members in (("arista-eos", 4), ("access-switches", 3)):
+        steps = demo_guides.GROUP_GUIDE["steps"]
+        shown = await guide_exec.execute_step(client, steps[1], {"group": group})
+        assert shown.ok and len(shown.detail["results"]) == members
+        assert all(e["summary"]["rows"][0][1].startswith("demo-") for e in shown.detail["results"])
+        assert (await guide_exec.execute_step(client, steps[2], {"group": group})).ok
+
+    serial = seed.system_reply("demo-eos-1")["system"]["state"]["serial-no"]
+    check = demo_guides.SERIAL_GUIDE["steps"][3]
+    assert (await guide_exec.execute_step(client, check, {"device": "demo-eos-1", "serial": serial})).ok
+    wrong = await guide_exec.execute_step(client, check, {"device": "demo-eos-1", "serial": "NOT-THIS-ONE"})
+    assert not wrong.ok and "NOT-THIS-ONE" in wrong.error  # the message shows what was typed
+    other = await guide_exec.execute_step(client, check, {"device": "demo-eos-2", "serial": serial})
+    assert not other.ok  # the serial number of another box
+
+
+def test_junos_example_guides_read_the_junos_reply_shapes():
+    """The examples/ Junos guides use the reply shapes network.py already parses; the demo's Junos devices answer in the same
+    shapes, so the chosen fields must find values there (the system and interface shapes are only as good as the demo's)."""
+    from pathlib import Path
+
+    from clixon_ui import guide
+    from clixon_ui.demo import seed
+
+    folder = Path(__file__).parent.parent / "examples"
+    report = guide.import_guide((folder / "junos-device-report.guide.json").read_text())
+    replies = {"get-system-information": seed.system_reply("demo-mx-1"), "get-lldp-interface-neighbors": seed.lldp_reply("demo-mx-1"),
+               "get-isis-adjacency-information": seed.isis_reply("demo-mx-1"), "get-isis-interface-information": seed.isis_reply("demo-mx-1")}
+    for step in report["steps"]:
+        if step["type"] == "rpc":
+            shown = guide.summary(replies[next(iter(step["body"]))], step["show"])
+            cells = [c for row in shown["rows"] for c in row]
+            assert cells and "—" not in cells, step["title"]
+    audit = guide.import_guide((folder / "junos-interface-check.guide.json").read_text())["steps"][2]
+    ifaces = seed.interface_reply("demo-mx-1", "et-0/0/0")
+    assert all(r.ok for r in guide.evaluate(audit["success"], ifaces))
+    assert all(r.ok for r in guide.evaluate([{"path": "system-information/os-version", "op": "exists"}], replies["get-system-information"]))

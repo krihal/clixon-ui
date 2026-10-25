@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "name": "Junos interface check",
+  "description": "Read-only: look at one interface and let the step say whether it is fine. It succeeds when the interface is administratively and operationally up. The paths of the system and interface replies are written from the Junos models and have not been checked against your devices: use Try it in the editor to confirm them and click the right values if one differs.",
+  "steps": [
+    {
+      "id": "s1",
+      "type": "input",
+      "title": "Which router?",
+      "var": "device",
+      "label": "Which router?",
+      "kind": "device",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s2",
+      "type": "input",
+      "title": "Which interface?",
+      "var": "port",
+      "label": "Which interface?",
+      "kind": "text",
+      "default": "et-0/0/0",
+      "choices": []
+    },
+    {
+      "id": "s3",
+      "type": "rpc",
+      "title": "Interface state",
+      "body": {
+        "get-interface-information": {
+          "interface-name": "{{port}}",
+          "extensive": {}
+        }
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "interface-information/physical-interface/name",
+          "label": "Interface"
+        },
+        {
+          "path": "interface-information/physical-interface/admin-status",
+          "label": "Admin"
+        },
+        {
+          "path": "interface-information/physical-interface/oper-status",
+          "label": "Oper"
+        },
+        {
+          "path": "interface-information/physical-interface/speed",
+          "label": "Speed"
+        },
+        {
+          "path": "interface-information/physical-interface/mtu",
+          "label": "MTU"
+        }
+      ],
+      "success": [
+        {
+          "path": "interface-information/physical-interface/admin-status",
+          "op": "equals",
+          "value": "up"
+        },
+        {
+          "path": "interface-information/physical-interface/oper-status",
+          "op": "equals",
+          "value": "up"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "confirm",
+      "title": "Recorded",
+      "question": "Have you noted the result for **{{port}}** on **{{device}}** in the ticket?"
+    }
+  ]
+}

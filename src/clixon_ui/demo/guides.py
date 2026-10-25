@@ -129,7 +129,119 @@ VERSIONS_GUIDE = {
     ],
 }
 
-GUIDES = [GUIDE, HEALTH_GUIDE, REPORT_GUIDE, COMPARE_GUIDE, VERSIONS_GUIDE]
+def inp(sid: str, title: str, var: str, kind: str = "text", default: str = "", choices: list[str] | None = None) -> dict:
+    return {"id": sid, "type": "input", "title": title, "var": var, "label": title, "kind": kind, "default": default, "choices": choices or []}
+
+
+PORT = fields("interfaces/interface/state/", ("name", "Port"), ("admin-status", "Admin"), ("oper-status", "Oper"),
+              ("counters/in-errors", "In errors"), ("counters/out-errors", "Out errors"),
+              ("counters/in-octets", "In octets"), ("counters/out-octets", "Out octets"))
+
+AUDIT_GUIDE = {
+    "name": "Interface error audit (demo)",
+    "description": "Read-only: pick a switch and one of its ports from a list. The step fails if the port is down or has input or "
+                   "output errors, so the result needs no reading: it is green or red.",
+    "steps": [
+        inp("s1", "Which switch?", "device", "device", "demo-eos-1"),
+        inp("s2", "Which port?", "port", "choice", "Ethernet1", ["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"]),
+        {"id": "s3", "type": "rpc", "title": "Port state and counters", **probe({"get-interface-state": {"interface-name": "{{port}}"}}),
+         "show": PORT,
+         "success": [{"path": "interfaces/interface/state/admin-status", "op": "equals", "value": "UP"},
+                     {"path": "interfaces/interface/state/oper-status", "op": "equals", "value": "UP"}],
+         "failure": [{"path": "interfaces/interface/state/counters/in-errors", "op": "not-equals", "value": "0"},
+                     {"path": "interfaces/interface/state/counters/out-errors", "op": "not-equals", "value": "0"}]},
+        {"id": "s4", "type": "confirm", "title": "Recorded", "question": "Have you noted the result for **{{port}}** on **{{device}}** in the ticket?"},
+    ],
+}
+
+RECONNECT_GUIDE = {
+    "name": "Reconnect a switch (demo)",
+    "description": "Close the controller's connection to a switch, open it again, wait until the switch answers, and pull its "
+                   "configuration. Uses a connection step, a wait that polls until a check passes, and a config pull. Each step "
+                   "that changes something asks first.",
+    "steps": [
+        inp("s1", "Which switch?", "device", "device", "demo-openconfig-3"),
+        {"id": "s2", "type": "text", "title": "What happens",
+         "text": "The controller drops its connection to **{{device}}**, connects again and reads the configuration. "
+                 "The switch itself is not touched."},
+        {"id": "s3", "type": "connection", "title": "Close the connection", "operation": "CLOSE", "device": "{{device}}"},
+        {"id": "s4", "type": "wait", "title": "Let it settle", "seconds": 3},
+        {"id": "s5", "type": "connection", "title": "Open the connection", "operation": "OPEN", "device": "{{device}}"},
+        {"id": "s6", "type": "wait", "title": "Wait until it answers",
+         "until": {**probe({"get-system-state": {}}), "rules": [{"path": "system/state/hostname", "op": "equals", "value": "{{device}}"}],
+                   "interval": 2, "timeout": 60}},
+        {"id": "s7", "type": "pull", "title": "Pull the configuration", "device": "{{device}}", "merge": False},
+        {"id": "s8", "type": "text", "title": "Done", "text": "**{{device}}** is connected and its configuration is in sync with the controller."},
+    ],
+}
+
+COUNTERS_GUIDE = {
+    "name": "Clear interface counters (demo)",
+    "description": "Read the counters of a port, clear them (a step that changes something, so it asks first), and read them "
+                   "again. The same fields are shown before and after so the two tables line up.",
+    "steps": [
+        inp("s1", "Which switch?", "device", "device", "demo-eos-1"),
+        inp("s2", "Which port?", "port", "choice", "Ethernet1", ["Ethernet1", "Ethernet2", "Ethernet3", "Ethernet4"]),
+        {"id": "s3", "type": "rpc", "title": "Counters before", **probe({"get-interface-state": {"interface-name": "{{port}}"}}), "show": PORT},
+        {"id": "s4", "type": "rpc", "title": "Clear the counters", **probe({"request-clear-counters": {"interface-name": "{{port}}"}})},
+        {"id": "s5", "type": "rpc", "title": "Counters after", **probe({"get-interface-state": {"interface-name": "{{port}}"}}), "show": PORT},
+        {"id": "s6", "type": "confirm", "title": "Look right?", "question": "Do the counters of **{{port}}** on **{{device}}** look as you expect after clearing?"},
+    ],
+}
+
+CHECKLIST_GUIDE = {
+    "name": "Maintenance window checklist (demo)",
+    "description": "A guide made of questions and confirmations with one live check: who and why, what was agreed, and a last "
+                   "look at the switch before work starts. Shows the input kinds (text, choice, device) and confirmations.",
+    "steps": [
+        inp("s1", "Ticket", "ticket", "text", "CHG-1234"),
+        inp("s2", "Kind of work", "kind", "choice", "planned", ["planned", "emergency"]),
+        inp("s3", "Switch", "device", "device", "demo-eos-2"),
+        {"id": "s4", "type": "text", "title": "Before you start",
+         "text": "Maintenance on **{{device}}** under **{{ticket}}** ({{kind}} work).\n\nWork through the confirmations; "
+                 "the last step looks at the switch itself."},
+        {"id": "s5", "type": "confirm", "title": "Customers informed", "question": "Are the affected customers informed about work on **{{device}}** ({{ticket}})?"},
+        {"id": "s6", "type": "confirm", "title": "Rollback plan", "question": "Is there a rollback plan and is the previous configuration saved?"},
+        {"id": "s7", "type": "check", "title": "The switch answers", **probe({"get-system-state": {}}),
+         "rules": [{"path": "system/state/hostname", "op": "equals", "value": "{{device}}"}]},
+        {"id": "s8", "type": "text", "title": "Go ahead", "text": "All set for **{{ticket}}**. Start the work, and note the time in the ticket."},
+    ],
+}
+
+GROUP_GUIDE = {
+    "name": "Check a device group (demo)",
+    "description": "Read-only: choose a device group instead of single switches. One step reaches every member and shows one summary "
+                   "per switch; a check then makes sure every member reports a software version. Written for the arista-eos and "
+                   "access-switches groups (the core routers answer in another shape).",
+    "steps": [
+        inp("s1", "Which group?", "group", "group", "arista-eos"),
+        {"id": "s2", "type": "rpc", "title": "Identity of every member",
+         "body": {"get-system-state": {}}, "target": {"devices": [], "groups": ["{{group}}"]}, "show": SYSTEM[:1] + SYSTEM[2:3]},
+        {"id": "s3", "type": "check", "title": "Every member reports a software version",
+         "body": {"get-system-state": {}}, "target": {"devices": [], "groups": ["{{group}}"]},
+         "rules": [{"path": "system/state/software-version", "op": "exists"}]},
+        {"id": "s4", "type": "confirm", "title": "Versions as planned",
+         "question": "Do all members of **{{group}}** run the software version you planned?"},
+    ],
+}
+
+SERIAL_GUIDE = {
+    "name": "Verify you are at the right box (demo)",
+    "description": "The operator reads the serial number off the hardware label and types it in; the guide checks it against what the "
+                   "switch itself reports. A typo or the wrong box makes the check fail; abort and start the guide again with the right value.",
+    "steps": [
+        inp("s1", "Which switch?", "device", "device", "demo-eos-1"),
+        {"id": "s2", "type": "rpc", "title": "What the switch reports", **probe({"get-system-state": {}}),
+         "show": fields("system/state/", ("hostname", "Hostname"), ("hardware", "Hardware"))},
+        inp("s3", "Serial number on the label", "serial", "text", ""),
+        {"id": "s4", "type": "check", "title": "The serial number matches", **probe({"get-system-state": {}}),
+         "rules": [{"path": "system/state/serial-no", "op": "equals", "value": "{{serial}}"}]},
+        {"id": "s5", "type": "text", "title": "Right box", "text": "The serial number **{{serial}}** belongs to **{{device}}**. Go ahead."},
+    ],
+}
+
+GUIDES = [GUIDE, HEALTH_GUIDE, REPORT_GUIDE, COMPARE_GUIDE, VERSIONS_GUIDE, AUDIT_GUIDE, RECONNECT_GUIDE, COUNTERS_GUIDE, CHECKLIST_GUIDE,
+          GROUP_GUIDE, SERIAL_GUIDE]
 
 
 def seed(db: Session) -> None:

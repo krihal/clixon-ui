@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "name": "Junos device report",
+  "description": "Read-only: what you usually look at on one Junos router (identity, LLDP neighbours, IS-IS adjacencies and metrics) as small tables instead of raw replies. The full reply of each step is one click away. The paths of the system and interface replies are written from the Junos models and have not been checked against your devices: use Try it in the editor to confirm them and click the right values if one differs.",
+  "steps": [
+    {
+      "id": "s1",
+      "type": "input",
+      "title": "Which router?",
+      "var": "device",
+      "label": "Which router?",
+      "kind": "device",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s2",
+      "type": "rpc",
+      "title": "Identity",
+      "body": {
+        "get-system-information": {}
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "system-information/host-name",
+          "label": "Hostname"
+        },
+        {
+          "path": "system-information/hardware-model",
+          "label": "Model"
+        },
+        {
+          "path": "system-information/os-name",
+          "label": "OS"
+        },
+        {
+          "path": "system-information/os-version",
+          "label": "Version"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "rpc",
+      "title": "LLDP neighbours",
+      "body": {
+        "get-lldp-interface-neighbors": {}
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "lldp-neighbors-information/lldp-neighbor-information/lldp-local-port-id",
+          "label": "Local port"
+        },
+        {
+          "path": "lldp-neighbors-information/lldp-neighbor-information/lldp-remote-system-name",
+          "label": "Neighbour"
+        },
+        {
+          "path": "lldp-neighbors-information/lldp-neighbor-information/lldp-remote-port-id",
+          "label": "Remote port"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "rpc",
+      "title": "IS-IS adjacencies",
+      "body": {
+        "get-isis-adjacency-information": {}
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "isis-adjacency-information/isis-adjacency/interface-name",
+          "label": "Interface"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/system-name",
+          "label": "Neighbour"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/level",
+          "label": "Level"
+        },
+        {
+          "path": "isis-adjacency-information/isis-adjacency/adjacency-state",
+          "label": "State"
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "type": "rpc",
+      "title": "IS-IS interfaces and metrics",
+      "body": {
+        "get-isis-interface-information": {}
+      },
+      "target": {
+        "devices": [
+          "{{device}}"
+        ],
+        "groups": []
+      },
+      "show": [
+        {
+          "path": "isis-interface-information/isis-interface/interface-name",
+          "label": "Interface"
+        },
+        {
+          "path": "isis-interface-information/isis-interface/metric-one",
+          "label": "Level 1 metric"
+        },
+        {
+          "path": "isis-interface-information/isis-interface/metric-two",
+          "label": "Level 2 metric"
+        }
+      ]
+    }
+  ]
+}

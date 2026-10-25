@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "name": "Check a Junos device group",
+  "description": "Read-only: choose a device group. One step reaches every member and shows one summary per router; a check then makes sure every member reports a software version. The paths of the system and interface replies are written from the Junos models and have not been checked against your devices: use Try it in the editor to confirm them and click the right values if one differs.",
+  "steps": [
+    {
+      "id": "s1",
+      "type": "input",
+      "title": "Which group?",
+      "var": "group",
+      "label": "Which group?",
+      "kind": "group",
+      "default": "",
+      "choices": []
+    },
+    {
+      "id": "s2",
+      "type": "rpc",
+      "title": "Identity of every member",
+      "body": {
+        "get-system-information": {}
+      },
+      "target": {
+        "devices": [],
+        "groups": [
+          "{{group}}"
+        ]
+      },
+      "show": [
+        {
+          "path": "system-information/host-name",
+          "label": "Hostname"
+        },
+        {
+          "path": "system-information/hardware-model",
+          "label": "Model"
+        },
+        {
+          "path": "system-information/os-name",
+          "label": "OS"
+        },
+        {
+          "path": "system-information/os-version",
+          "label": "Version"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "type": "check",
+      "title": "Every member reports a software version",
+      "body": {
+        "get-system-information": {}
+      },
+      "target": {
+        "devices": [],
+        "groups": [
+          "{{group}}"
+        ]
+      },
+      "rules": [
+        {
+          "path": "system-information/os-version",
+          "op": "exists"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "type": "confirm",
+      "title": "Versions as planned",
+      "question": "Do all members of **{{group}}** run the software version you planned?"
+    }
+  ]
+}
