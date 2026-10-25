@@ -225,3 +225,56 @@ def test_reply_lines():
     lines, cut = g.reply_lines({"software-information": {"host-name": "r1", "up": True}})
     assert lines == ["software-information {", "    host-name r1;", "    up true;", "}"] and not cut
     assert g.reply_lines({"output": {"a": 1}})[0][0].startswith("output")  # not a string: rendered like config
+
+
+# ---------------------------------------------------------------------------------------------- picking and summarising fields
+LLDP = {"lldp-neighbors-information": {"lldp-neighbor-information": [
+    {"lldp-local-port-id": "et-0/0/0", "lldp-remote-system-name": "r2", "lldp-remote-port-id": "et-0/0/1"},
+    {"lldp-local-port-id": "et-0/0/1", "lldp-remote-system-name": "r3"}]}, "up": True}
+
+
+def test_leaf_paths_merge_list_elements_and_drop_prefixes():
+    paths = {p["path"]: p for p in g.leaf_paths({"m:a": {"m:name": "x", "items": [{"id": 1}, {"id": 2}], "off": False, "none": None}})}
+    assert paths["a/name"]["sample"] == "x" and paths["a/name"]["count"] == 1
+    assert paths["a/items/id"] == {"path": "a/items/id", "sample": "1", "count": 2}
+    assert paths["a/off"]["sample"] == "false" and "a/none" not in paths
+    assert len(g.leaf_paths({str(i): i for i in range(50)}, limit=10)) == 10
+
+
+def test_label_for():
+    assert g.label_for("software-information/host-name") == "Host name"
+    assert g.label_for("a/items/0/") == "Items"
+
+
+def test_summary_vertical_and_grid():
+    one = g.summary({"sw": {"host-name": "r1", "ver": "24.4"}}, [{"path": "sw/host-name"}, {"path": "sw/ver", "label": "Version"}, {"path": "sw/none"}])
+    assert one == {"vertical": True, "columns": ["Field", "Value"], "rows": [["Host name", "r1"], ["Version", "24.4"], ["None", "—"]]}
+    base = "lldp-neighbors-information/lldp-neighbor-information/"
+    grid = g.summary(LLDP, [{"path": base + "lldp-local-port-id", "label": "Port"}, {"path": base + "lldp-remote-system-name"},
+                            {"path": base + "lldp-remote-port-id"}, {"path": "up", "label": "Up"}])
+    assert grid["vertical"] is False and grid["columns"] == ["Port", "Lldp remote system name", "Lldp remote port id", "Up"]
+    assert grid["rows"] == [["et-0/0/0", "r2", "et-0/0/1", "true"], ["et-0/0/1", "r3", "—", "true"]]  # the single value repeats, a gap is a dash
+    assert g.summary(LLDP, []) is None
+
+
+def test_show_fields_are_validated():
+    guide = sample()
+    guide["steps"][4]["show"] = [{"path": "a/b"}]
+    assert g.validate(guide) == []
+    guide["steps"][4]["show"] = [{"path": " / "}]
+    assert any("no path" in e for e in g.validate(guide))
+    guide["steps"][4]["show"] = [{"path": "a"}] * (g.MAX_SHOW_FIELDS + 1)
+    assert any("at most" in e for e in g.validate(guide))
+    assert g.new_step("rpc", "x")["show"] == []
+
+
+def test_success_and_failure_rules_are_validated():
+    guide = sample()
+    guide["steps"][4]["success"] = [{"path": "a", "op": "equals", "value": "1"}]
+    guide["steps"][4]["failure"] = [{"path": "b", "op": "regex", "value": "err"}]
+    assert g.validate(guide) == []
+    guide["steps"][4]["success"] = [{"path": "", "op": "equals"}]
+    guide["steps"][4]["failure"] = [{"path": "b", "op": "regex", "value": "("}]
+    text = "\n".join(g.validate(guide))
+    assert "succeeded when: a rule has no path" in text and "failed when: bad regex" in text
+    assert g.new_step("rpc", "x")["success"] == [] and g.new_step("rpc", "x")["failure"] == []

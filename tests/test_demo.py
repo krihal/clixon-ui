@@ -213,3 +213,23 @@ async def test_demo_health_guide_passes_on_the_demo_switches():
         if step["type"] in ("check", "rpc"):
             out = await guide_exec.execute_step(client, step, values)
             assert out.ok, (step["title"], out.error)
+
+
+async def test_demo_guides_with_fields_summarise_every_reply():
+    from clixon_ui import demo, guide_exec
+    from clixon_ui.demo import guides as demo_guides
+
+    client, _ = demo.make_client()
+    values = {"device": "demo-eos-1", "port": "Ethernet1", "first": "demo-eos-1", "second": "demo-eos-2"}
+    seen = 0
+    for g in (demo_guides.REPORT_GUIDE, demo_guides.COMPARE_GUIDE, demo_guides.VERSIONS_GUIDE):
+        for step in g["steps"]:
+            if step["type"] != "rpc":
+                continue
+            out = await guide_exec.execute_step(client, step, values)
+            assert out.ok, (g["name"], step["title"], out.error)
+            for entry in out.detail["results"]:
+                cells = [c for row in entry["summary"]["rows"] for c in row]
+                assert cells and "—" not in cells, (g["name"], step["title"], entry["target"])  # every chosen field found a value
+                seen += 1
+    assert seen == 4 + 2 + 2 + 7  # report 4 steps, compare 2 switches in 2 steps, versions 7 switches

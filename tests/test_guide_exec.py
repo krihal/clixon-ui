@@ -344,3 +344,37 @@ def test_deleting_a_guide_keeps_its_runs(env):
         kept = guides.get_run(s, run.id)
         assert kept.guide_id is None and kept.guide["name"] == "Upgrade" and guides.list_guides(s) == []
         assert guides.unfinished_runs(s)[0].id == run.id and guides.list_runs(s, username="ola")[0].id == run.id
+
+
+async def test_rpc_step_summarises_chosen_fields_from_the_full_reply():
+    c = FakeClient({"get-version": [{"r1": {"get-version": {"v": "1", "big": "x" * 200_000}}}]})
+    step = rpc_step("a", {"get-version": {}}, show=[{"path": "get-version/v", "label": "Version"}])
+    out = await guide_exec.execute_step(c, step, {})
+    entry = out.detail["results"][0]
+    assert entry["summary"]["rows"] == [["Version", "1"]]
+    assert entry["truncated"] is True  # the reply is cut for the log, the summary was made before
+    plain = await guide_exec.execute_step(c, rpc_step("b", {"get-version": {}}), {})
+    assert "summary" not in plain.detail["results"][0]
+
+
+async def test_rpc_step_success_and_failure_rules():
+    reply = {"get-x": {"state": "up", "errors": "0", "note": "ok"}}
+    c = FakeClient({"get-x": [{"r1": reply}]})
+
+    def step(**kw):
+        return rpc_step("a", {"get-x": {}}, **kw)
+
+    up = [{"path": "get-x/state", "op": "equals", "value": "up"}]
+    assert (await guide_exec.execute_step(c, step(success=up), {})).ok
+    down = [{"path": "get-x/state", "op": "equals", "value": "down"}]
+    out = await guide_exec.execute_step(c, step(success=down), {})
+    assert not out.ok and "'up'" in out.error and out.detail["results"][0]["rules"][0]["ok"] is False
+    boom = [{"path": "get-x/note", "op": "contains", "value": "ok"}]  # a failure rule that holds fails the step
+    out = await guide_exec.execute_step(c, step(failure=boom), {})
+    assert not out.ok and "Failed if" in out.error
+    quiet = [{"path": "get-x/errors", "op": "not-equals", "value": "0"}]  # ...and one that does not hold is fine
+    out = await guide_exec.execute_step(c, step(success=up, failure=quiet), {})
+    assert out.ok and [r["ok"] for r in out.detail["results"][0]["rules"]] == [True, True]
+    assert out.detail["results"][0]["fold"] is False  # an rpc keeps its reply visible, unlike a check
+    checked = await guide_exec.execute_step(c, check_step("c", up, {"get-x": {}}), {})
+    assert checked.detail["results"][0]["fold"] is True

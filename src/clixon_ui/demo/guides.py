@@ -58,14 +58,78 @@ HEALTH_GUIDE = {
          "rules": [{"path": "interfaces/interface/state/admin-status", "op": "equals", "value": "UP"},
                    {"path": "interfaces/interface/state/oper-status", "op": "equals", "value": "UP"},
                    {"path": "interfaces/interface/state/counters/in-errors", "op": "equals", "value": "0"}]},
-        {"id": "s5", "type": "rpc", "title": "LLDP neighbours", **probe({"get-lldp-neighbors": {}})},
+        {"id": "s5", "type": "rpc", "title": "LLDP neighbours", **probe({"get-lldp-neighbors": {}}),
+         "show": [{"path": "lldp/interfaces/interface/name", "label": "Local port"},
+                  {"path": "lldp/interfaces/interface/neighbors/neighbor/state/system-name", "label": "Neighbour"},
+                  {"path": "lldp/interfaces/interface/neighbors/neighbor/state/port-id", "label": "Remote port"}]},
         {"id": "s6", "type": "rpc", "title": "IS-IS state", **probe({"get-isis-state": {}})},
         {"id": "s7", "type": "confirm", "title": "Does it look right?",
          "question": "Do the neighbours and IS-IS adjacencies of **{{device}}** match what you expect before maintenance?"},
     ],
 }
 
-GUIDES = [GUIDE, HEALTH_GUIDE]
+def fields(base: str, *pairs: tuple[str, str]) -> list[dict]:
+    """`show` fields: (path below `base`, label) pairs."""
+    return [{"path": base + path, "label": label} for path, label in pairs]
+
+
+SYSTEM = fields("system/state/", ("hostname", "Hostname"), ("hardware", "Hardware"), ("software-version", "Software"), ("serial-no", "Serial number"))
+ISIS = fields("isis/interfaces/interface/", ("interface-id", "Port"), ("levels/level/afi-safi/af/state/metric", "Metric"),
+              ("levels/level/adjacencies/adjacency/state/system-id", "Neighbour"),
+              ("levels/level/adjacencies/adjacency/state/adjacency-state", "State"))
+
+REPORT_GUIDE = {
+    "name": "Device report (demo)",
+    "description": "Read-only: gather what you usually look at on one switch (identity, one port, LLDP and IS-IS neighbours) as small "
+                   "tables instead of raw replies. Every step uses the fields chosen in the editor; the full reply is one click away. "
+                   "The port step also says when it counts as failed: the port must be up and must have no input errors.",
+    "steps": [
+        {"id": "s1", "type": "input", "title": "Which switch?", "var": "device", "label": "Switch", "kind": "device", "default": "demo-eos-1", "choices": []},
+        {"id": "s2", "type": "input", "title": "Which port?", "var": "port", "label": "Port", "kind": "text", "default": "Ethernet1", "choices": []},
+        {"id": "s3", "type": "rpc", "title": "Identity", **probe({"get-system-state": {}}), "show": SYSTEM},
+        {"id": "s4", "type": "rpc", "title": "The port", **probe({"get-interface-state": {"interface-name": "{{port}}"}}),
+         "success": [{"path": "interfaces/interface/state/oper-status", "op": "equals", "value": "UP"}],
+         "failure": [{"path": "interfaces/interface/state/counters/in-errors", "op": "not-equals", "value": "0"}],
+         "show": fields("interfaces/interface/state/", ("name", "Port"), ("admin-status", "Admin"), ("oper-status", "Oper"), ("mtu", "MTU"),
+                        ("counters/in-octets", "In octets"), ("counters/out-octets", "Out octets"),
+                        ("counters/in-errors", "In errors"), ("counters/out-errors", "Out errors"))},
+        {"id": "s5", "type": "rpc", "title": "LLDP neighbours", **probe({"get-lldp-neighbors": {}}),
+         "show": fields("lldp/interfaces/interface/", ("name", "Port"), ("neighbors/neighbor/state/system-name", "Neighbour"),
+                        ("neighbors/neighbor/state/port-id", "Remote port"))},
+        {"id": "s6", "type": "rpc", "title": "IS-IS adjacencies", **probe({"get-isis-state": {}}), "show": ISIS},
+        {"id": "s7", "type": "text", "title": "Done", "text": "That is the report for **{{device}}**. Open any step above for the full reply."},
+    ],
+}
+
+COMPARE_GUIDE = {
+    "name": "Compare two switches (demo)",
+    "description": "Read-only: one RPC step sent to two switches gives one summary per switch, so differences in software or "
+                   "IS-IS adjacencies are easy to spot side by side.",
+    "steps": [
+        {"id": "s1", "type": "input", "title": "First switch", "var": "first", "label": "First switch", "kind": "device", "default": "demo-eos-1", "choices": []},
+        {"id": "s2", "type": "input", "title": "Second switch", "var": "second", "label": "Second switch", "kind": "device", "default": "demo-eos-2", "choices": []},
+        {"id": "s3", "type": "rpc", "title": "Identity of both",
+         "body": {"get-system-state": {}}, "target": {"devices": ["{{first}}", "{{second}}"], "groups": []}, "show": SYSTEM},
+        {"id": "s4", "type": "rpc", "title": "IS-IS adjacencies of both",
+         "body": {"get-isis-state": {}}, "target": {"devices": ["{{first}}", "{{second}}"], "groups": []}, "show": ISIS},
+        {"id": "s5", "type": "confirm", "title": "Do they match?",
+         "question": "Are **{{first}}** and **{{second}}** on the software version and with the neighbours you expect?"},
+    ],
+}
+
+VERSIONS_GUIDE = {
+    "name": "Software versions, access and aggregation (demo)",
+    "description": "Read-only and without questions: the identity of the seven Arista and OpenConfig demo switches in one step, "
+                   "one summary per switch.",
+    "steps": [
+        {"id": "s1", "type": "rpc", "title": "Identity of every switch", "body": {"get-system-state": {}},
+         "target": {"devices": [f"demo-eos-{n}" for n in range(1, 5)] + [f"demo-openconfig-{n}" for n in range(1, 4)], "groups": []},
+         "show": SYSTEM[:1] + SYSTEM[2:3]},
+        {"id": "s2", "type": "confirm", "title": "Reviewed", "question": "Have you looked at the software versions above?"},
+    ],
+}
+
+GUIDES = [GUIDE, HEALTH_GUIDE, REPORT_GUIDE, COMPARE_GUIDE, VERSIONS_GUIDE]
 
 
 def seed(db: Session) -> None:

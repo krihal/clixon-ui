@@ -161,7 +161,7 @@ def new_step(type_: str, step_id: str) -> dict:
         "text": {"text": ""},
         "confirm": {"question": ""},
         "input": {"var": "", "label": "", "kind": "text", "default": "", "choices": []},
-        "rpc": {"body": {}, "target": target},
+        "rpc": {"body": {}, "target": target, "show": [], "success": [], "failure": []},
         "check": {"body": {}, "target": target, "rules": []},
         "wait": {"seconds": 60},
         "connection": {"operation": "RECONNECT", "device": ""},
@@ -236,6 +236,17 @@ def _probe_errors(probe: dict, defined: set[str], *, read_only: bool, rules: boo
     return errs
 
 
+MAX_SHOW_FIELDS = 30
+
+
+def _show_errors(show: Any) -> list[str]:
+    if not show:
+        return []
+    if not isinstance(show, list) or len(show) > MAX_SHOW_FIELDS:
+        return [f"show at most {MAX_SHOW_FIELDS} fields."]
+    return ["a field to show has no path."] if any(not str(f.get("path", "")).strip("/ ") for f in show) else []
+
+
 def _rule_errors(rules: Any) -> list[str]:
     if not rules:
         return ["add at least one rule."]
@@ -271,6 +282,9 @@ def _validate_step(s: dict, defined: set[str]) -> list[str]:
             errs.append("list the choices.")
     elif t == "rpc":
         errs += _probe_errors(s, defined, read_only=False, rules=False)
+        errs += _show_errors(s.get("show"))
+        errs += [f"succeeded when: {e}" for e in _rule_errors(s["success"])] if s.get("success") else []
+        errs += [f"failed when: {e}" for e in _rule_errors(s["failure"])] if s.get("failure") else []
     elif t == "check":
         errs += _probe_errors(s, defined, read_only=True, rules=True)
     elif t == "wait":
@@ -373,3 +387,79 @@ def reply_lines(data: Any) -> tuple[list[str], bool]:
         if isinstance(d, dict) and len(d) == 1 and isinstance(d.get("output"), str):
             return d["output"].splitlines(), False
     return to_lines(data)
+
+
+# ------------------------------------------------------------------------------------------------ picking and summarising fields
+def label_for(path: str) -> str:
+    """A readable default label for a path: its last part, dashes as spaces ('host-name' -> 'Host name')."""
+    last = [p for p in path.split("/") if p and not p.isdigit()][-1:] or [""]
+    return last[0].replace("-", " ").replace("_", " ").capitalize()
+
+
+def leaf_paths(data: Any, limit: int = 400) -> list[dict]:
+    """Every value in a reply as {"path", "sample", "count"}, for the author to pick from. Elements of a list share one path
+    (`count` says how many values there are, `sample` is the first); keys are written without their module prefix."""
+    found: dict[str, dict] = {}
+
+    def walk(node: Any, path: tuple[str, ...]) -> None:
+        if len(found) >= limit and "/".join(path) not in found:
+            return
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, (*path, _local(k)))
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, path)
+        elif node is not None and path:
+            key = "/".join(path)
+            entry = found.setdefault(key, {"path": key, "sample": _text(node), "count": 0})
+            entry["count"] += 1
+
+    walk(data, ())
+    return list(found.values())
+
+
+def column(data: Any, path: str) -> tuple[list[str | None], bool]:
+    """The values at `path` for a table column, and whether the path went through a list. Unlike `lookup`, an element of a
+    list that lacks the key leaves a None gap, so the values of several columns stay on the right row."""
+    nodes: list[Any] = [data]
+    listy = False
+    for part in (p for p in path.split("/") if p):
+        nxt: list[Any] = []
+        for n in nodes:
+            if isinstance(n, list):
+                listy = True
+                if part.isdigit():
+                    nxt.extend(n[int(part):int(part) + 1] or [None])
+                    continue
+                for item in n:
+                    got = [v for k, v in item.items() if k == part or _local(k) == part] if isinstance(item, dict) else []
+                    nxt.extend(got or [None])
+            elif isinstance(n, dict):
+                nxt.extend([v for k, v in n.items() if k == part or _local(k) == part] or [None])
+            else:
+                nxt.append(None)
+        nodes = nxt
+    out: list[str | None] = []
+    for n in nodes:
+        if isinstance(n, list):  # a leaf-list at the end counts as several values
+            listy = True
+            out.extend([_text(x) for x in n] or [None])
+        else:
+            out.append(None if n is None else _text(n))
+    return out, listy
+
+
+def summary(data: Any, fields: list[dict]) -> dict | None:
+    """The chosen fields of one reply, ready for a table. One value per field gives a vertical list (Field, Value); several
+    give a grid with a column per field. A field that is a single value outside any list is repeated on every row; a missing
+    value shows as an em dash. None when no fields were chosen."""
+    if not fields:
+        return None
+    cols = [(f.get("label") or label_for(f["path"]), *column(data, f["path"])) for f in fields]
+    dash = lambda v: "—" if v is None else v  # noqa: E731
+    n = max(len(v) for _, v, _ in cols)
+    if n <= 1:
+        return {"vertical": True, "columns": ["Field", "Value"], "rows": [[label, dash(v[0] if v else None)] for label, v, _ in cols]}
+    rows = [[dash(v[i] if i < len(v) else (v[0] if len(v) == 1 and not listy else None)) for _, v, listy in cols] for i in range(n)]
+    return {"vertical": False, "columns": [label for label, _, _ in cols], "rows": rows}

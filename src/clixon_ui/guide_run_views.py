@@ -64,11 +64,18 @@ def show_reply(out, truncated: bool) -> None:
         ui.label(f"Reply cut at {guide.OUTPUT_LIMIT // 1024} KB in the run log.").classes("warn-tx text-sm")
 
 
+def show_summary(summary: dict) -> None:
+    """The fields the author chose, as a small table above the full reply."""
+    cols = [{"name": f"c{i}", "label": c, "field": f"c{i}", "align": "left"} for i, c in enumerate(summary["columns"])]
+    rows = [{"_i": n, **{f"c{i}": v for i, v in enumerate(row)}} for n, row in enumerate(summary["rows"])]
+    ui.table(columns=cols, rows=rows, row_key="_i", pagination={"rowsPerPage": 0}).props("dense flat hide-bottom").classes("w-full")
+
+
 def show_results(results: list[dict]) -> None:
     """One card per target: verdict, the rules that were checked, the reply. The reply is open for an RPC step (it is what
-    the operator came for) and folded away for a check (the rules are the point); a card is open when it is the only one or failed."""
+    the operator came for) and folded away for a check (the rules are the point); a card is open when it is the only one, failed, or has a summary (to compare side by side)."""
     for r in results:
-        with ui.expansion(value=not r["ok"] or len(results) == 1).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
+        with ui.expansion(value=not r["ok"] or len(results) == 1 or bool(r.get("summary"))).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
             with ex.add_slot("header"):
                 with ui.row().classes("items-center gap-2 w-full no-wrap"):
                     ui.icon("check_circle" if r["ok"] else "error", color="positive" if r["ok"] else "negative", size="sm")
@@ -79,9 +86,11 @@ def show_results(results: list[dict]) -> None:
                 with ui.row().classes("items-start gap-2 no-wrap"):
                     ui.icon("check" if rule["ok"] else "close", color="positive" if rule["ok"] else "negative", size="xs").classes("mt-1")
                     ui.label(rule["text"]).classes("text-sm font-mono")
+            if r.get("summary"):
+                show_summary(r["summary"])
             if "output" in r:
-                if r.get("rules") is not None:  # a check: the reply is evidence, not the result
-                    with ui.expansion("Reply").classes("w-full").props("dense"):
+                if r.get("fold") or r.get("summary"):  # a check, or a summary above it: the full reply is one click away
+                    with ui.expansion("Full reply" if r.get("summary") else "Reply").classes("w-full").props("dense"):
                         show_reply(r["output"], r.get("truncated", False))
                 else:
                     show_reply(r["output"], r.get("truncated", False))

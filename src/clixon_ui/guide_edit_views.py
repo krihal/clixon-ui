@@ -15,10 +15,11 @@ from . import auth_views, db, guide, guides, views
 from .client import RestconfError
 from .guide import GuideError
 from .rpc_views import _index
+from .rpcrun import run_on_targets
 from .style import BTN
 from .tables import data_table
 
-MONO_AREA = 'outlined input-style="font-family:var(--mono);font-size:13px;line-height:1.5;min-height:72px"'
+MONO_AREA = 'outlined stack-label input-style="font-family:var(--mono);font-size:13px;line-height:1.5;min-height:72px"'
 
 
 def next_id(steps: list[dict]) -> str:
@@ -56,10 +57,13 @@ async def edit_page(gid: str):
             return
         work = copy.deepcopy(guides.body(row)) if row else {"name": "", "description": "", "steps": []}
     try:
-        devices = sorted(d["name"] for d in await client.devices(cached=True))
+        all_devs = await client.devices(cached=True)
+        devices = sorted(d["name"] for d in all_devs)
+        open_devices = [d for d in devices if next((x for x in all_devs if x["name"] == d), {}).get("conn-state") == "OPEN"]
         groups = sorted(await client.device_groups())
     except RestconfError:
-        devices, groups = [], []
+        devices, open_devices, groups = [], [], []
+    remembered: dict[str, str] = {}  # values given for {{variables}} while trying an RPC, kept for the next try
     steps: list[dict] = work["steps"]
     opened: set[str] = {s["id"] for s in steps[:1]}
 
@@ -90,7 +94,7 @@ async def edit_page(gid: str):
                           ).props("use-chips outlined dense").classes("w-96 max-w-full")
         ui.label("Pick devices or groups, or type {{variable}} to take it from an input step.").classes("mut text-xs")
 
-    def rules_editor(rules: list[dict]) -> None:
+    def rules_editor(rules: list[dict], label: str = "Must"):
         holder = ui.column().classes("w-full gap-2")
 
         def draw() -> None:
@@ -99,8 +103,8 @@ async def edit_page(gid: str):
                 for rule in rules:
                     with ui.row().classes("w-full items-start gap-2 no-wrap"):
                         ui.input("Path in the reply", placeholder="software-information/junos-version").bind_value(rule, "path").props(
-                            "outlined dense").classes("grow font-mono")
-                        op = ui.select(guide.OPERATORS, label="Must", value=rule["op"], on_change=lambda e, r=rule: (
+                            "outlined dense stack-label").classes("grow font-mono")
+                        op = ui.select(guide.OPERATORS, label=label, value=rule["op"], on_change=lambda e, r=rule: (
                             r.__setitem__("op", e.value), draw())).props("outlined dense").classes("w-48")
                         if rule["op"] not in ("exists", "not-exists"):
                             ui.input("Value").bind_value(rule, "value").props("outlined dense").classes("w-64")
@@ -110,6 +114,109 @@ async def edit_page(gid: str):
                           ).props("outline dense no-caps no-wrap").classes("w-32")
 
         draw()
+        return lambda rule: (rules.append(rule), draw())
+
+    def fields_editor(show: list[dict]):
+        """The fields of the reply the runner shows as a summary above the full reply. Returns the function that adds one."""
+        holder = ui.column().classes("w-full gap-2")
+
+        def draw() -> None:
+            holder.clear()
+            with holder:
+                for f in show:
+                    with ui.row().classes("w-full items-start gap-2 no-wrap"):
+                        ui.input("Label").bind_value(f, "label").props("outlined dense stack-label").classes("w-56")
+                        ui.input("Path in the reply").bind_value(f, "path").props("outlined dense").classes("grow font-mono")
+                        ui.button(icon="close", on_click=lambda f=f: (show.remove(f), draw())).props("flat round dense").tooltip("Remove field")
+                ui.button("Add field", icon="add", on_click=lambda: (show.append({"path": "", "label": ""}), draw())
+                          ).props("outline dense no-caps no-wrap").classes("w-32")
+
+        draw()
+        return lambda path, label: (show.append({"path": path, "label": label}), draw())
+
+    async def ask_values(names: list[str]) -> dict[str, str] | None:
+        """Values for the {{variables}} an RPC uses, for this try only."""
+        if not names:
+            return {}
+        with ui.dialog() as d, ui.card().classes("w-[480px] gap-2"):
+            ui.label("Values for this try").classes("text-lg")
+            ui.label("The RPC uses variables. Give them a value for this try; nothing is saved in the guide.").classes("mut text-sm")
+            fields = {n: ui.input(n, value=remembered.get(n, "")).props("outlined dense").classes("w-full") for n in names}
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Cancel", on_click=lambda: d.submit(None)).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Try it", icon="play_arrow", on_click=lambda: d.submit({n: (f.value or "").strip() for n, f in fields.items()})
+                          ).props("no-caps no-wrap").classes(BTN)
+        got = await d
+        d.delete()
+        if got is not None and not all(got.values()):
+            ui.notify("Give every variable a value.", type="warning")
+            return None
+        remembered.update(got or {})
+        return got
+
+    def try_panel(probe: dict, hooks: dict, modes: dict[str, str]) -> None:
+        """Run the probe's RPC once on a connected device and list what came back; clicking a value picks it."""
+        with ui.row().classes("items-center gap-3"):
+            wanted = [d for d in probe["target"]["devices"] if d in open_devices]
+            dev = ui.select(open_devices, label="Try it on", with_input=True, value=(wanted or open_devices or [None])[0]
+                            ).props("outlined dense").classes("w-72")
+            ui.button("Try it", icon="play_arrow", on_click=lambda: tryit()).props("outline dense no-caps no-wrap").classes(BTN)
+            spin = ui.spinner(size="sm")
+            spin.set_visibility(False)
+        ui.label("Runs the RPC once on that device (read-only RPCs only) so you can pick values from the reply.").classes("mut text-xs")
+        result = ui.column().classes("w-full gap-2")
+
+        async def tryit() -> None:
+            body = probe.get("body")
+            if not body:
+                ui.notify("Pick or write the RPC first.", type="warning")
+                return
+            if not guide.inline_is_read_only(body):
+                ui.notify("Only read-only RPCs (get-*, show ...) can be tried while editing a guide.", type="negative")
+                return
+            if not dev.value:
+                ui.notify("No connected device to try it on.", type="warning")
+                return
+            if (values := await ask_values(guide.variables_in(body))) is None:
+                return
+            try:
+                real = guide.fill(body, values)
+            except GuideError as e:
+                ui.notify(str(e), type="negative")
+                return
+            spin.set_visibility(True)
+            done = await run_on_targets(client, {"inline": real, "label": next(iter(real))}, [dev.value], [])
+            spin.set_visibility(False)
+            res = done[0][1]
+            result.clear()
+            with result:
+                if "error" in res:
+                    ui.label(res["error"]).classes("err-box whitespace-pre-wrap w-full")
+                    return
+                data = next(iter((res["replies"] or {}).values()), None)
+                rows = guide.leaf_paths(data)
+                if not rows:
+                    ui.label("The reply is empty.").classes("mut")
+                    return
+                with ui.row().classes("items-center gap-3"):
+                    ui.label("Click a value to").classes("font-medium text-sm")
+                    mode = ui.toggle(modes, value=next(iter(modes))).props(
+                        "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
+                flt = ui.input(placeholder="Filter…").props("dense outlined clearable").classes("w-full")
+                full = {r["path"]: r["sample"] for r in rows}
+                table = data_table(
+                    [{"name": "path", "label": "Path", "field": "path", "align": "left", "classes": "font-mono"},
+                     {"name": "sample", "label": "Value", "field": "shown", "align": "left"},
+                     {"name": "count", "label": "Values", "field": "count", "align": "right"}],
+                    [{**r, "shown": r["sample"][:90]} for r in rows], "path", "'rail-ok'", height="32vh")
+                table.bind_filter_from(flt, "value")
+
+                def picked(e) -> None:
+                    path = e.args[1]["path"]
+                    hooks[mode.value](path, full[path])
+                    ui.notify(f"Added {path}", type="positive")
+
+                table.on("rowClick", picked)
 
     def probe_editor(probe: dict, index: int, *, read_only: bool, rules: bool) -> None:
         """The RPC to send (picked, typed as a CLI command, or as JSON), where to send it, and what to check in the reply."""
@@ -144,9 +251,24 @@ async def edit_page(gid: str):
                 body_text.set_value(json.dumps({name: {}}, indent=2))
 
         target_editor(probe["target"], index)
+        hooks: dict = {}
+        try_panel(probe, hooks, {"rule": "add a rule that checks it"} if rules else
+                  {"show": "show it", "success": "require it for success", "failure": "fail on it"})
         if rules:
             ui.label("Check the reply of every target. All of them must pass.").classes("mut text-sm")
-            rules_editor(probe["rules"])
+            add_rule = rules_editor(probe["rules"])
+            hooks["rule"] = lambda path, sample: add_rule({"path": path, "op": "equals", "value": sample})
+        else:
+            ui.label("Fields to show: a summary table above the full reply. Leave empty to show only the reply.").classes("mut text-sm")
+            add_field = fields_editor(probe.setdefault("show", []))
+            hooks["show"] = lambda path, sample: add_field(path, guide.label_for(path))
+            ui.label("Succeeded when (optional): every rule must hold in the reply of every target. Without rules the step succeeds "
+                     "when the device answers without an error.").classes("mut text-sm")
+            add_ok = rules_editor(probe.setdefault("success", []))
+            hooks["success"] = lambda path, sample: add_ok({"path": path, "op": "equals", "value": sample})
+            ui.label("Failed when (optional): the step fails as soon as one of these rules holds in a reply.").classes("mut text-sm")
+            add_bad = rules_editor(probe.setdefault("failure", []), label="Fails if it")
+            hooks["failure"] = lambda path, sample: add_bad({"path": path, "op": "equals", "value": sample})
         parse()
 
     async def pick_rpc(read_only: bool) -> str | None:
@@ -214,7 +336,7 @@ async def edit_page(gid: str):
             ui.label(hint).classes("mut text-xs")
         elif t == "input":
             with ui.row().classes("w-full gap-3 items-start"):
-                ui.input("Variable name", placeholder="device").bind_value(step, "var").props("outlined dense").classes("w-56")
+                ui.input("Variable name", placeholder="device").bind_value(step, "var").props("outlined dense stack-label").classes("w-56")
                 ui.input("Question shown").bind_value(step, "label").props("outlined dense").classes("w-80")
                 kind = ui.select({"text": "Free text", "device": "A device", "group": "A device group", "choice": "One of a list"},
                                  label="Kind", value=step["kind"], on_change=lambda e: (step.__setitem__("kind", e.value), choices.set_visibility(e.value == "choice"))

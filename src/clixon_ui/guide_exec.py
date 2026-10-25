@@ -34,9 +34,11 @@ class Outcome:
 
 
 # ------------------------------------------------------------------------------------------------ one step
-async def _probe(client, probe: dict, values: dict[str, str], rules: list[dict] | None) -> tuple[bool, list[dict], str | None]:
-    """Run the probe's RPC on its targets and, when `rules` are given, check every reply against them.
-    Returns (all ok, one entry per target, first problem as text)."""
+async def _probe(client, probe: dict, values: dict[str, str], rules: list[dict] | None, show: list[dict] | None = None,
+                 failure: list[dict] | None = None, fold: bool = False) -> tuple[bool, list[dict], str | None]:
+    """Run the probe's RPC on its targets and check every reply: `rules` must all hold, none of the `failure` rules may hold.
+    `fold`: the page shows the reply folded away (a check: the rules are the point). Returns (all ok, one entry per target,
+    first problem as text)."""
     body = g.fill(probe["body"], values)
     devices, groups = (g.fill(x, values) for x in g.targets_of(probe))
     done = await run_on_targets(client, {"inline": body, "label": next(iter(body))}, devices, groups)
@@ -47,11 +49,17 @@ async def _probe(client, probe: dict, values: dict[str, str], rules: list[dict] 
             continue
         for name, data in (res["replies"] or {}).items() or [(label, None)]:
             output, truncated = g.clip_output(data)
-            entry: dict[str, Any] = {"target": name, "ok": True, "output": output, "truncated": truncated}
+            entry: dict[str, Any] = {"target": name, "ok": True, "output": output, "truncated": truncated, "fold": fold}
+            if show and data is not None:
+                entry["summary"] = g.summary(data, show)  # from the full reply: the log keeps only the first 64 KB of it
             if rules is not None:
                 results = g.evaluate(rules, data, values)
                 entry["rules"] = [{"text": r.describe(), "ok": r.ok} for r in results]
                 entry["ok"] = all(r.ok for r in results)
+            if failure:
+                bad = g.evaluate(failure, data, values)
+                entry["rules"] = entry.get("rules", []) + [{"text": f"Failed if: {r.describe()}", "ok": not r.ok} for r in bad]
+                entry["ok"] = entry["ok"] and not any(r.ok for r in bad)
             entries.append(entry)
     problem = next((f"{e['target']}: {e['error']}" for e in entries if e.get("error")), None) or \
         next((f"{e['target']}: {r['text']}" for e in entries for r in e.get("rules", []) if not r["ok"]), None)
@@ -73,10 +81,10 @@ async def execute_step(client, step: dict, values: dict[str, str], progress: Cal
     """Do the work of an rpc, check, wait, connection or pull step. Raises GuideError for a missing variable."""
     t = step["type"]
     if t == "rpc":
-        ok, entries, problem = await _probe(client, step, values, None)
-        return Outcome(ok, problem or (None if ok else "No reply."), {"results": entries})
+        ok, entries, problem = await _probe(client, step, values, step.get("success") or None, step.get("show"), step.get("failure") or None)
+        return Outcome(ok, None if ok else (problem or "No reply."), {"results": entries})
     if t == "check":
-        ok, entries, problem = await _probe(client, step, values, step["rules"])
+        ok, entries, problem = await _probe(client, step, values, step["rules"], fold=True)
         return Outcome(ok, None if ok else f"Check failed. {problem or 'No reply.'}", {"results": entries})
     if t == "wait":
         return await _wait(client, step, values, progress, sleep)
@@ -104,7 +112,7 @@ async def _wait(client, step: dict, values: dict[str, str], progress, sleep) -> 
     while True:
         tries += 1
         try:  # a device that is still rebooting answers with errors: that is "not yet", not a failure
-            ok, entries, problem = await _probe(client, until, values, until["rules"])
+            ok, entries, problem = await _probe(client, until, values, until["rules"], fold=True)
         except (RestconfError, TimeoutError) as e:
             ok, entries, problem = False, [], str(e)
         elapsed = time.monotonic() - start
