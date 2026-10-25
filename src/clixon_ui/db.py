@@ -77,9 +77,9 @@ class GuideRun(Base):
 _factory: sessionmaker[Session] | None = None
 
 
-def default_url() -> str:
+def default_url(file: str = "clixon-ui.db") -> str:
     base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "clixon-ui"
-    return f"sqlite:///{base / 'clixon-ui.db'}"
+    return f"sqlite:///{base / file}"
 
 
 def normalize_url(url: str) -> str:

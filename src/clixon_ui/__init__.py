@@ -19,9 +19,10 @@ def main() -> None:
                    help="do not verify TLS certificate (self-signed); also CLIXON_INSECURE=1")
     p.add_argument("--host", default=os.environ.get("CLIXON_UI_HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("CLIXON_UI_PORT", "8080")))
-    p.add_argument("--database-url", default=os.environ.get("CLIXON_UI_DATABASE_URL", db.default_url()),
+    p.add_argument("--database-url", default=os.environ.get("CLIXON_UI_DATABASE_URL"),
                    help="user database: sqlite:///path/file.db or postgresql://user:pw@host/dbname (needs the 'postgres' extra); "
-                        "also CLIXON_UI_DATABASE_URL")
+                        "default ~/.local/share/clixon-ui/clixon-ui.db, or clixon-ui-demo.db with --demo (so a demo never "
+                        "touches your real users and guides); also CLIXON_UI_DATABASE_URL")
     p.add_argument("--send-user", action="store_true", default=os.environ.get("CLIXON_UI_SEND_USER", "").lower() in ("1", "true", "yes"),
                    help="send the signed-in user name to the controller as X-Forwarded-User and HTTP_AUTHORIZATION (needs nginx: "
                         "fastcgi_param REMOTE_USER $http_x_forwarded_user; transactions otherwise show 'anonymous'); also CLIXON_UI_SEND_USER=1")
@@ -43,7 +44,7 @@ def main() -> None:
         # NiceGUI's reloader re-imports the main module and only works for a plain script, not an
         # installed entry point or `python -m`, so hand over to the small script next to this file.
         os.execv(sys.executable, [sys.executable, str(Path(__file__).parent / "_dev.py"), *sys.argv[1:]])
-    db.init(a.database_url)
+    db.init(a.database_url or db.default_url("clixon-ui-demo.db" if a.demo else "clixon-ui.db"))
     with db.session() as s:
         if not a.demo:
             accounts.seed_admin(s)

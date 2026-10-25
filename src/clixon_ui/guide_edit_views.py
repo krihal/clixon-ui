@@ -71,18 +71,27 @@ async def edit_page(gid: str):
     with ui.row().classes("w-full items-center gap-3 no-wrap"):
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/guides")).props("flat round dense").tooltip("Guides")
         ui.label("Edit guide" if row else "New guide").classes("text-2xl grow")
+        mode = ui.toggle({"form": "Form", "json": "JSON"}, value="form", on_change=lambda e: switch(e)).props(
+            "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
         ui.button("Cancel", on_click=lambda: ui.navigate.to("/guides")).props("flat no-caps no-wrap").classes(BTN)
         ui.button("Save", icon="save", on_click=lambda: save()).props("no-caps no-wrap").classes(BTN)
     problems = ui.label().classes("err-box whitespace-pre-wrap w-full")
     problems.set_visibility(False)
 
-    with ui.card().classes("w-full p-4 gap-3"):
-        ui.input("Name").bind_value(work, "name").props("outlined dense").classes("w-full max-w-xl")
-        ui.textarea("What is this guide for?").bind_value(work, "description").props("outlined dense autogrow").classes("w-full max-w-3xl")
+    with ui.column().classes("w-full gap-3") as form_col:
+        with ui.card().classes("w-full p-4 gap-3"):
+            ui.input("Name").bind_value(work, "name").props("outlined dense").classes("w-full max-w-xl")
+            ui.textarea("What is this guide for?").bind_value(work, "description").props("outlined dense autogrow").classes("w-full max-w-3xl")
 
-    ui.label("Steps").classes("text-lg mt-2")
-    box = ui.column().classes("w-full gap-2")
-    add_row = ui.row().classes("items-center gap-3")
+        ui.label("Steps").classes("text-lg mt-2")
+        box = ui.column().classes("w-full gap-2")
+        add_row = ui.row().classes("items-center gap-3")
+
+    with ui.column().classes("w-full gap-2") as json_col:
+        ui.label("The whole guide as JSON, the same format as Export and Import. It is read back when you switch to Form or press Save.").classes("mut text-sm")
+        json_text = ui.textarea().props('outlined stack-label input-style="font-family:var(--mono);font-size:13px;line-height:1.5;min-height:62vh"'
+                                        ).classes("w-full")
+    json_col.set_visibility(False)
 
     # ------------------------------------------------------------------------------------------ small editors
     def target_editor(target: dict, index: int) -> None:
@@ -453,7 +462,60 @@ async def edit_page(gid: str):
                             ui.icon(icon, size="sm").classes("mut")
                             ui.label(label)
 
+    def current_json() -> str:
+        return json.dumps({"name": work["name"], "description": work["description"], "steps": steps}, indent=2, ensure_ascii=False)
+
+    def apply_json() -> bool:
+        """Read the JSON view back into the guide. False, with the reason shown, when it cannot be read."""
+        try:
+            data = json.loads(json_text.value or "")
+            if not isinstance(data, dict) or not isinstance(data.get("steps"), list) or not all(isinstance(s, dict) for s in data["steps"]):
+                raise GuideError("A guide is a JSON object with a list of steps, and every step is an object.")
+            used = {s["id"] for s in data["steps"] if s.get("id")}
+            new_steps = []
+            for n, s in enumerate(data["steps"], 1):
+                sid = s.get("id") or next(f"s{k}" for k in range(n, n + len(used) + len(data["steps"]) + 2) if f"s{k}" not in used)
+                used.add(sid)
+                try:
+                    new_steps.append(guide.complete_step(s, sid))
+                except GuideError as e:
+                    raise GuideError(f"Step {n}: {e}.") from e
+        except ValueError as e:  # json.JSONDecodeError says where
+            problems.set_text(f"Not valid JSON: {e}")
+            problems.set_visibility(True)
+            return False
+        except GuideError as e:
+            problems.set_text(str(e))
+            problems.set_visibility(True)
+            return False
+        work["name"], work["description"] = str(data.get("name", "")), str(data.get("description", ""))
+        steps[:] = new_steps
+        opened.intersection_update({s["id"] for s in steps})
+        problems.set_visibility(False)
+        draw_steps()
+        return True
+
+    switching = {"back": False}
+
+    def switch(e) -> None:
+        if switching["back"]:
+            return
+        if e.value == "json":
+            json_text.set_value(current_json())
+            problems.set_visibility(False)
+            form_col.set_visibility(False)
+            json_col.set_visibility(True)
+        elif apply_json():
+            json_col.set_visibility(False)
+            form_col.set_visibility(True)
+        else:  # the JSON cannot be read yet: stay in the JSON view, the reason is shown
+            switching["back"] = True
+            mode.set_value("json")
+            switching["back"] = False
+
     def save() -> None:
+        if mode.value == "json" and not apply_json():
+            return
         if errors := guide.validate(work):
             problems.set_text("\n".join(errors))
             problems.set_visibility(True)

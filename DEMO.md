@@ -11,6 +11,7 @@ uv run clixon-ui --demo --port 8099
 
 - No controller URL, no accounts: the login page accepts anything and signs in as `guest` (not an admin, may change
   things). There is no admin account in demo mode, so `/admin` and the raw `/restconf` console are unreachable.
+- Guides: eleven example guides are added at every start (existing ones are not overwritten) in the demo's own database, `clixon-ui-demo.db` next to the normal one, so a demo never touches real users or guides. Visitors can run them but not edit them (the guest is not an admin). Run history is stored in that database and shared by all visitors.
 - Everything lives in memory and is shared by all visitors. It resets to the initial data every 30 minutes, and
   anybody can press "Reset now" in the header.
 - Service scripts do not run. "Commit diff" shows an invented interface block per device the service touches.

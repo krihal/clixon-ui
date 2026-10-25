@@ -278,3 +278,18 @@ def test_success_and_failure_rules_are_validated():
     text = "\n".join(g.validate(guide))
     assert "succeeded when: a rule has no path" in text and "failed when: bad regex" in text
     assert g.new_step("rpc", "x")["success"] == [] and g.new_step("rpc", "x")["failure"] == []
+
+
+def test_complete_step_fills_in_what_a_hand_written_step_leaves_out():
+    step = g.complete_step({"type": "rpc", "title": "Version", "body": {"get-system-information": {}}}, "s7")
+    assert step["id"] == "s7" and step["target"] == {"devices": [], "groups": []}
+    assert step["show"] == [] and step["success"] == [] and step["failure"] == []
+    kept = g.complete_step({"id": "mine", "type": "check", "title": "t", "body": {}, "target": {"devices": ["r1"]}, "rules": "oops"}, "s1")
+    assert kept["id"] == "mine" and kept["target"] == {"devices": ["r1"], "groups": []} and kept["rules"] == []
+    wait = g.complete_step({"type": "wait", "until": {"body": {"get-x": {}}, "rules": []}}, "s2")
+    assert wait["until"]["interval"] == 10 and wait["until"]["timeout"] == 600 and wait["until"]["target"] == {"devices": [], "groups": []}
+    assert g.complete_step({"type": "text", "text": "hi"}, "s3")["title"] == "Instruction"
+    with pytest.raises(GuideError, match="unknown step type 'nope'"):
+        g.complete_step({"type": "nope"}, "s4")
+    # what it returns can go straight into the editor and then be validated
+    assert g.validate({"name": "x", "steps": [g.complete_step({"type": "text", "title": "t", "text": "x"}, "a")]}) == []

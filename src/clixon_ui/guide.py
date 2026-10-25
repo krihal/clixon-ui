@@ -170,6 +170,28 @@ def new_step(type_: str, step_id: str) -> dict:
     return {**base, **json.loads(json.dumps(extra))}
 
 
+def complete_step(step: dict, step_id: str) -> dict:
+    """A step written by hand (JSON view) with every key the form editor relies on filled in. Missing keys get the defaults
+    of `new_step`; what is there is kept as it is. Raises GuideError for an unknown type. It does not judge the values:
+    `validate` does that."""
+    t = step.get("type")
+    if t not in STEP_TYPES:
+        raise GuideError(f"unknown step type {t!r} (use one of {', '.join(STEP_TYPES)})")
+    full = {**new_step(t, step.get("id") or step_id), **step}
+    if not full.get("id"):
+        full["id"] = step_id
+    if t == "wait" and isinstance(full.get("until"), dict):
+        full["until"] = {"body": {}, "target": {}, "rules": [], "interval": 10, "timeout": 600, **full["until"]}
+    for probe in (full, full.get("until")):
+        if isinstance(probe, dict) and ("target" in probe):
+            target = probe["target"] if isinstance(probe["target"], dict) else {}
+            probe["target"] = {**target, "devices": list(target.get("devices") or []), "groups": list(target.get("groups") or [])}
+    for key in ("rules", "show", "success", "failure"):
+        if key in full and not isinstance(full[key], list):
+            full[key] = []
+    return full
+
+
 def step_is_read_only(step: dict) -> bool:
     """True when running the step cannot change anything on a device or the controller."""
     t = step["type"]
