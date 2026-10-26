@@ -160,7 +160,7 @@ async def run_page(rid: str):
             ui.label("The guide stops here and cannot be continued. A step that is running cannot be recalled: the "
                      "controller may still finish it.").classes("text-sm")
             with ui.row().classes("justify-end w-full"):
-                ui.button("Keep running", on_click=lambda: d.submit(False)).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Keep running", on_click=lambda: d.submit(False)).props("outline no-caps no-wrap").classes(BTN)
                 ui.button("Abort run", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
         yes = await d
         d.delete()

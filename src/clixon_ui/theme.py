@@ -33,6 +33,7 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .mut,.text-gray-300,.text-gray-400,.text-gray-500{color:var(--mut)!important}
 .err-tx{color:var(--err)!important}.warn-tx{color:var(--wa)!important}.ok-tx{color:var(--ok)!important}
 .line{border-color:var(--line)!important}
+.alert-info{border-radius:10px;border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 9%,var(--panel));color:var(--tx)}
 .alert-warn,.alert-err,.alert-ok{border-radius:10px;border:1px solid}.alert-warn{background:var(--wa-bg);color:var(--wa);border-color:var(--wa)}.alert-err{background:var(--err-bg);color:var(--err);border-color:var(--err)}.alert-ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
 .fill-col{align-self:stretch}.fill-field,.fill-field .q-field__inner,.fill-field .q-field__control{height:100%}.fill-field textarea{height:100%!important;resize:none}
 .bg-page{background:var(--bg)}
@@ -75,6 +76,9 @@ code,pre,.nicegui-code,.mono{font-family:var(--mono)!important;font-variant-nume
 .q-btn{text-transform:none!important;font-weight:500;border-radius:var(--r-s)!important}
 .q-btn.q-btn--outline{background:var(--field-bg);color:var(--tx)!important}
 .q-btn.q-btn--outline:before{border-color:var(--line-2)!important}
+/* every button with a label has a border: a flat one looks like an outline one (icon-only buttons stay borderless) */
+.q-btn.q-btn--flat:has(.q-btn__content>.block){background:var(--field-bg)}
+.q-btn.q-btn--flat:has(.q-btn__content>.block):before{border:1px solid var(--line-2)}
 .q-btn.q-btn--outline .q-btn__content,.q-btn.q-btn--outline .q-btn__content .q-icon{color:var(--tx)!important}
 .q-btn.q-btn--outline .q-icon{color:var(--nav-tx)!important}
 /* tonal buttons: inside a layer that precedes Quasar's own !important utilities (unlayered !important rules lose to them) */
@@ -191,6 +195,10 @@ PHONE_CSS = """
 :root{--vh100:100vh}
 @supports (height:100dvh){:root{--vh100:100dvh}} /* the visible height: phone browsers hide their address bar while scrolling */
 .phone-only{display:none}
+/* dashboard: a 12 column grid; a widget spans 3, 4, 6 or 12 columns (dashboard_layout.SIZES) */
+.dash-grid{grid-template-columns:repeat(12,minmax(0,1fr))}
+@media (max-width:1100px){.dash-cell[style*="span 3"],.dash-cell[style*="span 4"]{grid-column:span 6!important}}
+@media (max-width:700px){.dash-cell{grid-column:1/-1!important}}
 @media (max-width:700px){
  :root{--header-h:56px}
  .phone-only{display:inline-flex}

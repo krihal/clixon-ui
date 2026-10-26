@@ -44,7 +44,7 @@ async def _confirm_run(req: dict, devs: list[str], grps: list[str]) -> bool:
         ui.code(json.dumps(req["body"], indent=2), language="json").classes("w-full")
         ui.label("Targets: " + ", ".join(devs + [f"group {g}" for g in grps])).classes("text-sm")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=d.close).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Run", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
     return bool(await d)
 

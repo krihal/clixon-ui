@@ -133,7 +133,7 @@ async def start_dialog(guide_id: int, access) -> None:
         if why:
             ui.label(why).classes("err-box")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=lambda: d.submit(False)).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit(False)).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Start", icon="play_arrow", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN).set_enabled(not why)
     go = await d
     _dispose(d)
@@ -160,7 +160,7 @@ async def delete_dialog(guide_id: int) -> None:
         ui.label(f"Delete the guide '{name}'?").classes("text-lg")
         ui.label("Finished and running runs keep their own copy, so the history stays readable.").classes("text-sm")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=lambda: d.submit(False)).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit(False)).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Delete", icon="delete", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
     yes = await d
     _dispose(d)
@@ -207,7 +207,7 @@ def import_dialog() -> None:
 
         up = ui.upload(on_upload=got, auto_upload=True, max_files=1).props("accept=.json flat bordered").classes("w-full")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=d.close).props("outline no-caps no-wrap").classes(BTN)
     d.open()
     d.on("hide", lambda: _dispose(d))
 

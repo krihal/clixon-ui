@@ -165,7 +165,7 @@ async def delete_flow(svc: Node, key: str) -> bool:
         ui.label("Delete & commit removes the instance AND the configuration it created on the devices, and commits "
                  "right away. A commit applies the whole candidate.").classes("warn-tx text-sm")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=lambda: d.submit("")).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit("")).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Delete from candidate", on_click=lambda: d.submit("candidate")).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Delete & commit", icon="delete_forever", color="negative", on_click=lambda: d.submit("commit")).props("no-caps no-wrap").classes(BTN)
     choice = await d
@@ -185,7 +185,7 @@ async def delete_flow(svc: Node, key: str) -> bool:
             ui.label(f"Really delete {name} from the devices?").classes("text-lg")
             ui.label("Its configuration is removed from the devices and the change is committed. This cannot be undone.").classes("warn-tx")
             with ui.row().classes("justify-end w-full"):
-                ui.button("Cancel", on_click=d2.close).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Cancel", on_click=d2.close).props("outline no-caps no-wrap").classes(BTN)
                 ui.button("Delete & commit", icon="delete_forever", color="negative", on_click=lambda: d2.submit(True)).props("no-caps no-wrap").classes(BTN)
         confirmed2 = await d2
         _dispose(d2)

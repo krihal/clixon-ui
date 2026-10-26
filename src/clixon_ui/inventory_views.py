@@ -144,7 +144,7 @@ async def _confirm_commit(title: str, intro: str, diff_text: str, warn: str = ""
             else:
                 ui.label("The candidate is identical to the running configuration; there is nothing to commit.").classes("mut")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=lambda: d.submit(False)).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit(False)).props("outline no-caps no-wrap").classes(BTN)
             ui.button(button, icon="rocket_launch", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
     ok = bool(await d)
     _dispose(d)
@@ -191,7 +191,7 @@ async def delete_flow(kind_key: str, key: str) -> bool:
             " The device and its stored configuration are removed from the controller." if kind_key == "device" else ""
         )).classes("warn-tx text-sm")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=lambda: d.submit("")).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit("")).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Delete from candidate", on_click=lambda: d.submit("candidate")).props("outline no-caps no-wrap").classes(BTN)
             ui.button("Delete & commit", icon="delete_forever", color="negative", on_click=lambda: d.submit("commit")).props("no-caps no-wrap").classes(BTN)
     choice = await d

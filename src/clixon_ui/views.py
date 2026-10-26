@@ -541,7 +541,7 @@ async def commit_page(device: str = ""):
                     ui.badge(f"+{s_.added}", color="positive").props("outline")
                     ui.badge(f"−{s_.removed}", color="negative").props("outline")
             with ui.row().classes("justify-end w-full"):
-                ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Cancel", on_click=d.close).props("outline no-caps no-wrap").classes(BTN)
                 ui.button("Commit", icon="rocket_launch", color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
         if await d:
             await deploy_run("COMMIT")

@@ -74,6 +74,18 @@ class GuideRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+
+class DashboardLayout(Base):
+    """The one dashboard layout every user sees (id is always 1); no row means the default layout."""
+
+    __tablename__ = "dashboard_layout"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layout: Mapped[dict] = mapped_column(JSON)
+    updated_by: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 _factory: sessionmaker[Session] | None = None
 
 

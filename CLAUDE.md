@@ -145,6 +145,14 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 - Demo: `demo/guides.py` seeds two example guides (an upgrade with writes, a read-only health check); at every demo start the ones missing by name are added (existing ones are never overwritten). The demo `guest` is not an admin, so demo visitors can run but not edit. To look at the editor, start `--demo --database-url sqlite:///x.db` and set `is_admin` on `guest` in that file first.
 - Verified against the demo controller only, not a live controller.
 
+## Dashboard layout (`dashboard_layout.py`, `dashboard_edit_views.py`)
+
+- The dashboard is built from a layout the **admins** set for everyone (`/dashboard/layout`, "Customize" button on the dashboard; one row in `dashboard_layout`, none = the default that looks like the old fixed page). Per widget: shown or not, order, width (small ¼ / medium ⅓ / large ½ / full: 3, 4, 6, 12 of 12 columns), height (panels only) and "pin to bottom" (stays below the scrolling part). A preview shows the grid while editing.
+- Admins can also add **labels** (up to 20): plain text placed anywhere in the layout, styled as Heading, Text, Info, Warning or Alert box (`label-<n>` entries in the same layout). Always plain text with line breaks, never HTML or markdown.
+- To add a widget: add it to `dashboard_layout.WIDGETS` (an older stored layout gets it appended automatically, `normalize`) and draw it in `dashboard._widget`. Widgets only draw what is in the summary `s`; a widget whose data is missing draws nothing.
+- Below 1100 px small and medium widgets take half the row, below 700 px every widget is full width (`.dash-cell` rules in `theme.py`).
+- The "Guides" widget (start a guide, continue your unfinished runs) is off by default.
+
 ## Pending changes panel (`pending.py`)
 
 - All committing happens here. Edit pages (services, inventory, NACM) only **save to the candidate**; their "Save & review" button saves and opens `pending.open_panel()`. Other entry points: "Review & commit" on `/services/<type>` and the dashboard's "uncommitted changes" alert. There is deliberately no header button or polling.
@@ -172,6 +180,7 @@ Keep logic pure and testable; keep NiceGUI calls in the `*_views.py` / `forms.py
 
 ## UI conventions (the user cares about these)
 
+- **Every button with a label has a border** (`theme.py`: a flat button is drawn like an outline one). Use `outline` for Cancel and other secondary buttons; icon-only buttons stay borderless.
 - **Buttons shown together have the same size.** Use `BTN` / `BTN_TOOLBAR` / `BTN_SM` from `style.py` via `.classes(...)`
   and `no-caps no-wrap`. Never hard-code widths. Icon-only buttons are exempt.
 - **Cards in a grid are the same size** (fixed height, clamp long text).

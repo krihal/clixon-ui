@@ -73,7 +73,7 @@ async def edit_page(gid: str):
         ui.label("Edit guide" if row else "New guide").classes("text-2xl grow whitespace-nowrap")
         mode = ui.toggle({"form": "Form", "json": "JSON"}, value="form", on_change=lambda e: switch(e)).props(
             "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
-        ui.button("Cancel", on_click=lambda: ui.navigate.to("/guides")).props("flat no-caps no-wrap").classes(BTN)
+        ui.button("Cancel", on_click=lambda: ui.navigate.to("/guides")).props("outline no-caps no-wrap").classes(BTN)
         ui.button("Save", icon="save", on_click=lambda: save()).props("no-caps no-wrap").classes(BTN)
     problems = ui.label().classes("err-box whitespace-pre-wrap w-full")
     problems.set_visibility(False)
@@ -152,7 +152,7 @@ async def edit_page(gid: str):
             ui.label("The RPC uses variables. Give them a value for this try; nothing is saved in the guide.").classes("mut text-sm")
             fields = {n: ui.input(n, value=remembered.get(n, "")).props("outlined dense").classes("w-full") for n in names}
             with ui.row().classes("justify-end w-full"):
-                ui.button("Cancel", on_click=lambda: d.submit(None)).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Cancel", on_click=lambda: d.submit(None)).props("outline no-caps no-wrap").classes(BTN)
                 ui.button("Try it", icon="play_arrow", on_click=lambda: d.submit({n: (f.value or "").strip() for n, f in fields.items()})
                           ).props("no-caps no-wrap").classes(BTN)
         got = await d
@@ -303,7 +303,7 @@ async def edit_page(gid: str):
             table.bind_filter_from(flt, "value")
             table.on("rowClick", lambda e: d.submit(e.args[1]["name"]))
             with ui.row().classes("justify-end w-full"):
-                ui.button("Cancel", on_click=lambda: d.submit(None)).props("flat no-caps no-wrap").classes(BTN)
+                ui.button("Cancel", on_click=lambda: d.submit(None)).props("outline no-caps no-wrap").classes(BTN)
 
             async def load() -> None:
                 if not dev.value:

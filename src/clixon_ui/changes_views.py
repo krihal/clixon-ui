@@ -114,7 +114,7 @@ async def _confirm(title: str, text: str, button: str) -> bool:
         ui.label(title).classes("text-lg")
         ui.label(text).classes("text-sm mut")
         with ui.row().classes("justify-end w-full"):
-            ui.button("Cancel", on_click=d.close).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=d.close).props("outline no-caps no-wrap").classes(BTN)
             ui.button(button, color="negative", on_click=lambda: d.submit(True)).props("no-caps no-wrap").classes(BTN)
     ok = bool(await d)
     from .service_views import _dispose

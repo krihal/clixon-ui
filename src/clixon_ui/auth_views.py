@@ -343,7 +343,7 @@ async def _user_dialog(username: str | None, acting: User) -> bool:
             d.submit(None)
 
         with ui.row().classes("justify-end w-full gap-2"):
-            ui.button("Cancel", on_click=lambda: d.submit(None)).props("flat no-caps no-wrap").classes(BTN)
+            ui.button("Cancel", on_click=lambda: d.submit(None)).props("outline no-caps no-wrap").classes(BTN)
             if user:
                 ui.button("Reset password", icon="key", on_click=reset).props("outline no-caps no-wrap").classes(BTN)
                 ui.button("Delete user", icon="delete", color="negative", on_click=remove).props("outline no-caps no-wrap").classes(BTN)
