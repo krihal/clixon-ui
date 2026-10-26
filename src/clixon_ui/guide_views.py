@@ -11,7 +11,7 @@ from .guide import GuideError
 from .guide_run_views import status_text
 from .service_views import _dispose
 from .style import BTN, BTN_TOOLBAR
-from .tables import RAIL_RUN, data_table, page_column
+from .tables import RAIL_RUN, data_table, page_column, phone_hide
 
 TOGGLE = "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark"
 
@@ -225,12 +225,12 @@ def _history_rows() -> list[dict]:
 def _history() -> None:
     rows = _history_rows()
     table = data_table(
-        [{"name": "id", "label": "Run", "field": "id", "align": "left", "sortable": True},
+        phone_hide([{"name": "id", "label": "Run", "field": "id", "align": "left", "sortable": True},
          {"name": "guide", "label": "Guide", "field": "guide", "align": "left", "sortable": True, "classes": "name"},
          {"name": "user", "label": "Started by", "field": "user", "align": "left"},
          {"name": "started", "label": "Started", "field": "started", "align": "left", "sortable": True},
          {"name": "state", "label": "State", "field": "state", "align": "left"},
-         {"name": "progress", "label": "Steps done", "field": "progress", "align": "right"}],
+         {"name": "progress", "label": "Steps done", "field": "progress", "align": "right"}], "user", "started"),
         rows, "id", RAIL_RUN)
     table.on("rowClick", lambda e: ui.navigate.to(f"/guide-runs/{e.args[1]['id']}"))
     if not rows:

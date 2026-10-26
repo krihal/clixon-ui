@@ -19,7 +19,7 @@ from .forms import render_children
 from .schema import Node, data_children
 from .service_views import _dispose, _progress, get_schema
 from .style import BTN, BTN_BAR, BTN_TOOLBAR
-from .tables import RAIL_INVENTORY, data_table, page_column
+from .tables import RAIL_INVENTORY, data_table, page_column, phone_hide
 
 
 @dataclass(frozen=True)
@@ -84,10 +84,10 @@ async def _list(kind_key: str, lead=None) -> None:
         ui.button("Add", icon="add", on_click=lambda: ui.navigate.to(form_url(kind_key))
                   ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
     table = data_table(
-        [{"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
+        phone_hide([{"name": "name", "label": "Name", "field": "name", "align": "left", "sortable": True, "classes": "name"},
          {"name": "descr", "label": "Description", "field": "descr", "align": "left"},
          {"name": "summary", "label": "Details", "field": "summary", "align": "left"},
-         {"name": "act", "label": "", "field": "name", "align": "right"}],
+         {"name": "act", "label": "", "field": "name", "align": "right"}], "descr"),
         rows, "name", RAIL_INVENTORY)
     table.bind_filter_from(flt, "value")
     table.add_slot("body-cell-act", """

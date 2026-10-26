@@ -110,7 +110,7 @@ async def network_page():
             ui.label("Neighbours your devices see. Nothing is queried until you press Discover.").classes("mut")
 
         with ui.card().classes("w-full p-3 gap-2"):
-            with ui.row().classes("w-full items-start no-wrap gap-3"):
+            with ui.row().classes("w-full items-start no-wrap gap-3 wrap-phone"):
                 source = ui.select({k: s.label for k, s in SOURCES.items()}, value=DEFAULT_SOURCE, label="Discovery method"
                                    ).props("outlined dense").classes("w-64")
                 if len(SOURCES) < 2:
@@ -148,7 +148,7 @@ async def network_page():
             ui.label("No network map yet").classes("font-medium")
             ui.label("Choose the devices to ask and press Discover.").classes("mut text-sm")
 
-        map_box = ui.row().classes("w-full no-wrap items-stretch gap-3 grow").style("min-height:0")
+        map_box = ui.row().classes("w-full no-wrap items-stretch gap-3 grow wrap-phone").style("min-height:0")
         with map_box:
             with ui.card().classes("grow min-w-0 p-0").style("min-height:0"):
                 chart = ui.echart(graph_option(Graph(), "force", False), on_point_click=lambda e: node_clicked(e)

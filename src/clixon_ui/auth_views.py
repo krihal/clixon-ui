@@ -372,7 +372,7 @@ def _users_panel(acting: User) -> None:
     cols = [{"name": c, "label": label, "field": c, "align": "left", "sortable": True}
             for c, label in (("username", "User"), ("role", "Role"), ("mode", "Access"), ("pages", "Pages"), ("status", "Status"), ("last", "Last sign-in"))]
     cols[0]["classes"] = "name"
-    table = data_table(cols, rows, "username", RAIL_INVENTORY, height="calc(100vh - var(--header-h) - 230px)")
+    table = data_table(cols, rows, "username", RAIL_INVENTORY, height="calc(var(--vh100) - var(--header-h) - 230px)")
     table.bind_filter_from(flt, "value")
 
     async def edit(e) -> None:

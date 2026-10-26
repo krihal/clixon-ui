@@ -68,9 +68,9 @@ async def edit_page(gid: str):
     opened: set[str] = {s["id"] for s in steps[:1]}
 
     # ------------------------------------------------------------------------------------------ header
-    with ui.row().classes("w-full items-center gap-3 no-wrap"):
+    with ui.row().classes("w-full items-center gap-3"):  # wraps on a phone
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/guides")).props("flat round dense").tooltip("Guides")
-        ui.label("Edit guide" if row else "New guide").classes("text-2xl grow")
+        ui.label("Edit guide" if row else "New guide").classes("text-2xl grow whitespace-nowrap")
         mode = ui.toggle({"form": "Form", "json": "JSON"}, value="form", on_change=lambda e: switch(e)).props(
             "no-caps no-wrap dense unelevated toggle-color=primary color=transparent text-color=dark")
         ui.button("Cancel", on_click=lambda: ui.navigate.to("/guides")).props("flat no-caps no-wrap").classes(BTN)
@@ -419,14 +419,14 @@ async def edit_page(gid: str):
                                   ).classes("w-full border line rounded-lg").props("dense expand-separator") as ex:
                     with ex.add_slot("header"):
                         with ui.row().classes("items-center gap-2 w-full no-wrap"):
-                            ui.icon(icon, size="sm").classes("mut")
+                            ui.icon(icon, size="sm").classes("mut hide-phone")
                             ui.label(f"{i + 1}.").classes("mut")
-                            ui.label().bind_text_from(step, "title").classes("font-medium")
-                            ui.label(label).classes("mut text-sm")
-                            ui.space()
+                            ui.label().bind_text_from(step, "title").classes("font-medium grow truncate min-w-0")
+                            ui.label(label).classes("mut text-sm hide-phone")
                             for ic, tip, fn in (("arrow_upward", "Move up", lambda i=i: move(i, -1)), ("arrow_downward", "Move down", lambda i=i: move(i, 1)),
                                                 ("content_copy", "Duplicate", lambda i=i: duplicate(i)), ("delete", "Remove", lambda i=i: remove(i))):
-                                ui.button(icon=ic, on_click=fn).props("flat round dense").tooltip(tip).on("click.stop", lambda: None)
+                                ui.button(icon=ic, on_click=fn).props("flat round dense").classes("hide-phone" if ic == "content_copy" else "").tooltip(tip
+                                                                                                                                      ).on("click.stop", lambda: None)
                     with ui.column().classes("w-full gap-3 p-3"):
                         step_body(step, i)
 

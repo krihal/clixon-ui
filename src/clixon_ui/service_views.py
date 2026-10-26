@@ -14,7 +14,7 @@ from .formdata import (Lookup, entry_from_json, property_entries, property_key, 
                        validate)
 from .forms import render_children
 from .style import BTN, BTN_BAR, BTN_TOOLBAR
-from .tables import RAIL_SERVICE, data_table, page_column
+from .tables import RAIL_SERVICE, data_table, page_column, phone_hide
 from .schema import Node, Schema, load_schema, module_list
 
 _schema_task: asyncio.Task | None = None
@@ -272,10 +272,10 @@ async def service_type_page(qname: str):
                       ).props("dense no-caps no-wrap").classes(BTN_TOOLBAR + " wr")
 
         table = data_table(
-            [{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True, "classes": "name"},
+            phone_hide([{"name": "key", "label": "service-name", "field": "key", "align": "left", "sortable": True, "classes": "name"},
              {"name": "desc", "label": "Description", "field": "desc", "align": "left"},
              {"name": "status", "label": "Status", "field": "status", "align": "left"},
-             {"name": "act", "label": "", "field": "key", "align": "right"}],
+             {"name": "act", "label": "", "field": "key", "align": "right"}], "desc"),
             rows, "key", RAIL_SERVICE)
         table.bind_filter_from(flt, "value")
         table.add_slot("body-cell-status", '''

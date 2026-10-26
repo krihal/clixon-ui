@@ -11,7 +11,7 @@ from nicegui import app, background_tasks, ui
 from . import diffview, polling, theme
 from .access import Access
 from .style import BTN, BTN_TOOLBAR
-from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column
+from .tables import RAIL_DEVICE, RAIL_TRANSACTION, data_table, page_column, phone_hide
 from .client import user_headers, ClixonClient, RestconfError, Unreachable
 
 client: ClixonClient  # set by __init__.main()
@@ -42,6 +42,7 @@ MENU = [
         ("/transactions", "Transactions", "receipt_long"),
     ]),
 ]
+PHONE_PX = 700  # below this width the menu is an overlay and the header shows icons only (theme.PHONE_CSS uses the same number)
 POLL_SECONDS = 5  # refresh interval for the Devices and Transactions pages
 STATE_COLOR = {"OPEN": "positive", "CLOSED": "negative"}
 
@@ -107,23 +108,36 @@ def frame(access: Access | None = None) -> None:
         if access:
             ui.space()
             if DEMO:
-                ui.html('<span class="pill pill-other">Demo: fake devices, reset every 30 minutes</span>')
+                ui.html('<span class="pill pill-other demo-pill">Demo: fake devices, reset every 30 minutes</span>'
+                        '<span class="pill pill-other phone-only">Demo</span>')
                 ui.button("Reset now", icon="restart_alt", on_click=reset_demo).props("flat no-caps no-wrap dense").classes("header-link")
             ui.button(access.username, icon="account_circle", on_click=lambda: ui.navigate.to("/account")).props("flat no-caps no-wrap dense").classes("header-link")
             from .auth_views import sign_out  # lazy: auth_views imports this module
             ui.button(icon="logout", on_click=sign_out).props("flat round dense").classes("header-link mr-3").tooltip("Sign out")
 
     drawer = ui.left_drawer(bordered=False, fixed=True).props(
-        "width=250 mini-width=56 behavior=desktop"
+        f"width=250 mini-width=56 breakpoint={PHONE_PX}"
     ).classes("p-0")
     labels: list[ui.item_section] = []
     items: dict = {}  # menu route -> its q-item, to move the 'selected' mark when the page changes
     headings: list = []  # section headings: visible when the menu is expanded
     dividers: list = []  # thin lines between sections: visible instead of the headings when folded
 
-    def toggle() -> None:
+    async def on_phone() -> bool:
+        return bool(await ui.run_javascript(f"window.innerWidth <= {PHONE_PX}"))
+
+    async def toggle() -> None:
+        if await on_phone():  # the menu is an overlay: open or close it
+            drawer.toggle()
+            return
+        drawer.show()
         app.storage.user["folded"] = not app.storage.user["folded"]
         apply()
+
+    async def go(route: str) -> None:
+        ui.navigate.to(route)
+        if await on_phone():
+            drawer.hide()
 
     def apply() -> None:
         f = app.storage.user["folded"]
@@ -145,7 +159,7 @@ def frame(access: Access | None = None) -> None:
                     dividers.append(ui.separator().classes("menu-divider"))
                 headings.append(ui.label(heading).classes("menu-heading"))
                 for route, label, icon in entries:
-                    item = ui.item(on_click=lambda r=route: ui.navigate.to(r)).props("clickable").classes("w-full")
+                    item = ui.item(on_click=lambda r=route: go(r)).props("clickable").classes("w-full")
                     items[route] = item
                     with item:
                         with ui.item_section().props("avatar").classes("min-w-0"):
@@ -276,6 +290,7 @@ async def devices_page():
         {"name": "framing", "label": "Framing", "field": "netconf-framing-type", "align": "left", "classes": "mono"},
         {"name": "menu", "label": "", "field": "name", "align": "right"},
     ]
+    phone_hide(columns, "since", "sync", "framing")
     row_menu = '''
         <q-td :props="props" class="row-actions"><q-btn flat dense round icon="more_horiz">
           <q-menu auto-close><q-list dense style="min-width:150px">
@@ -630,9 +645,9 @@ async def transactions_page():
 
         rows: list[dict] = []
         t = data_table(
-            [{"name": k, "label": k.title(), "field": k, "align": "left",
-              **({"classes": "mono"} if k in ("tid", "time", "dur") else {})}
-             for k in ("tid", "description", "state", "result", "username", "time", "dur")],
+            phone_hide([{"name": k, "label": k.title(), "field": k, "align": "left",
+                         **({"classes": "mono"} if k in ("tid", "time", "dur") else {})}
+                        for k in ("tid", "description", "state", "result", "username", "time", "dur")], "state", "username", "dur"),
             rows, "tid", RAIL_TRANSACTION)
         t.add_slot("body-cell-result", '''
             <q-td :props="props"><span v-if="props.value" :class="'pill pill-' + (props.value=='SUCCESS'?'OPEN':props.value=='FAILED'||props.value=='ERROR'?'CLOSED':'other')">{{props.value}}</span></q-td>''')

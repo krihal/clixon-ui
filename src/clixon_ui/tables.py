@@ -16,7 +16,17 @@ RAIL_INVENTORY = "'rail-ok'"  # plain lists: no state to colour by
 RAIL_RUN = "row.status == 'done' ? 'rail-ok' : (row.status == 'failed' || row.status == 'aborted') ? 'rail-bad' : 'rail-warn'"
 RAIL_RPC = "row.type == 'read' ? 'rail-ok' : 'rail-warn'"  # read-only vs may change the device
 
-FILL_HEIGHT = "calc(100vh - var(--header-h) - 32px)"  # viewport minus header and page padding
+FILL_HEIGHT = "calc(var(--vh100) - var(--header-h) - 32px)"  # viewport minus header and page padding
+
+
+def phone_hide(columns: list[dict], *names: str) -> list[dict]:
+    """Leave the named columns out on a phone (`.hide-phone` in theme.PHONE_CSS), so the ones that matter fit without
+    scrolling sideways. Returns `columns` for use inline."""
+    for c in columns:
+        if c["name"] in names:
+            c["classes"] = f"{c.get('classes', '')} hide-phone".strip()
+            c["headerClasses"] = f"{c.get('headerClasses', '')} hide-phone".strip()
+    return columns
 
 
 def page_column() -> ui.column:

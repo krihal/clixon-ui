@@ -186,6 +186,47 @@ DIFF_CSS = """
 .dbody{font:12.5px/1.5 var(--mono);display:grid;grid-template-columns:minmax(max-content,1fr);align-content:start;background:var(--field-bg);border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh;padding:6px 0}
 """
 
+# Phones: everything below PHONE_PX wide. views.PHONE_PX must match (the drawer's `breakpoint`).
+PHONE_CSS = """
+:root{--vh100:100vh}
+@supports (height:100dvh){:root{--vh100:100dvh}} /* the visible height: phone browsers hide their address bar while scrolling */
+.phone-only{display:none}
+@media (max-width:700px){
+ :root{--header-h:56px}
+ .phone-only{display:inline-flex}
+ .q-header .demo-pill{display:none}
+ .q-field__native,.q-field__input,.q-field textarea{font-size:16px}   /* iPhones zoom into smaller text fields */
+ .q-table th,.q-table td{padding:0 8px}
+ .q-table td{white-space:normal;line-height:1.25}   /* a long description wraps instead of pushing the other columns away */
+ .q-table th.q-table--col-auto-width,.q-table td.q-table--col-auto-width{padding:0 4px}
+ .q-header img{height:28px!important}
+ .font-mono,.confbody-wrap{overflow-wrap:anywhere;min-width:0}   /* paths and commands have no spaces to break at */
+ .hide-phone{display:none!important}
+ .stack-phone{flex-direction:column-reverse!important;flex-wrap:nowrap!important}
+ .stack-phone>*{width:100%!important;max-width:100%!important}
+ .q-header .header-link .q-icon.on-left{margin-right:0}
+ .q-header .header-link{padding:0 6px}
+ .q-header .header-link.mr-3{margin-right:6px}
+ .q-header .nav-burger{margin-left:6px}
+ .q-drawer .q-item{min-height:48px}
+ /* fixed widths give way to the screen */
+ .w-96,.w-80,.w-72,.w-64,.w-60,.w-56,.w-52,.w-48,.w-40,.min-w-52,.max-w-xl,.max-w-3xl{max-width:100%!important}
+ .q-card[class*="w-["]{width:100%!important;max-width:100%!important}
+ /* what must beat Quasar's own !important utilities (.block, .hidden, .row.wrap ...) goes in the layer that precedes them */
+ @layer overrides{
+  .q-header{flex-wrap:nowrap!important;gap:0!important}
+  .q-btn.h-9,.q-btn.h-7{height:44px!important;min-height:44px!important}   /* a finger needs 44 px; the desktop buttons are 36 */
+  .q-btn--round.q-btn--dense{min-width:44px;min-height:44px}
+  .wrap-phone{flex-wrap:wrap!important}   /* rows that are one line on a desktop (Quasar's .no-wrap is !important) */
+  .q-header .header-link .q-btn__content>.block{display:none!important}   /* header buttons: icon only */
+  /* the menu is an overlay here: labels are always shown, whatever the desktop "folded" setting is */
+  .q-drawer .menu-heading.hidden{display:block!important}
+  .q-drawer .q-item__section.hidden{display:flex!important}
+  .q-drawer .menu-divider{display:none!important}
+ }
+}
+"""
+
 
 def apply() -> None:
     """Install the theme on the current page."""
@@ -194,3 +235,4 @@ def apply() -> None:
     ui.dark_mode(None)  # follow the system light/dark setting (Quasar components); our own tokens use prefers-color-scheme
     ui.add_css(CSS)
     ui.add_css(DIFF_CSS)
+    ui.add_css(PHONE_CSS)

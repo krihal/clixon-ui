@@ -68,7 +68,8 @@ def show_summary(summary: dict) -> None:
     """The fields the author chose, as a small table above the full reply."""
     cols = [{"name": f"c{i}", "label": c, "field": f"c{i}", "align": "left"} for i, c in enumerate(summary["columns"])]
     rows = [{"_i": n, **{f"c{i}": v for i, v in enumerate(row)}} for n, row in enumerate(summary["rows"])]
-    ui.table(columns=cols, rows=rows, row_key="_i", pagination={"rowsPerPage": 0}).props("dense flat hide-bottom").classes("w-full")
+    with ui.element("div").classes("w-full min-w-0").style("overflow-x:auto"):  # a wide table scrolls itself, not the page
+        ui.table(columns=cols, rows=rows, row_key="_i", pagination={"rowsPerPage": 0}).props("dense flat hide-bottom").classes("w-full")
 
 
 def show_results(results: list[dict]) -> None:
@@ -85,7 +86,7 @@ def show_results(results: list[dict]) -> None:
             for rule in r.get("rules", []):
                 with ui.row().classes("items-start gap-2 no-wrap"):
                     ui.icon("check" if rule["ok"] else "close", color="positive" if rule["ok"] else "negative", size="xs").classes("mt-1")
-                    ui.label(rule["text"]).classes("text-sm font-mono")
+                    ui.label(rule["text"]).classes("text-sm font-mono min-w-0")
             if r.get("summary"):
                 show_summary(r["summary"])
             if "output" in r:
@@ -139,15 +140,15 @@ async def run_page(rid: str):
     steps = body["steps"]
     ctl.kick()
 
-    with ui.row().classes("w-full items-center gap-3 no-wrap"):
+    with ui.row().classes("w-full items-center gap-3"):  # wraps on a phone
         ui.button(icon="arrow_back", on_click=lambda: ui.navigate.to("/guides")).props("flat round dense").tooltip("Guides")
-        with ui.column().classes("gap-0 grow"):
+        with ui.column().classes("gap-0 grow min-w-0"):
             ui.label(body["name"]).classes("text-2xl")
             ui.label(f"Run {run.id} · started by {run.username} · version {run.guide_version}").classes("mut text-sm")
         pill = ui.label().classes("pill")
         abort_btn = ui.button("Abort run", icon="stop_circle", on_click=lambda: abort()).props("no-caps no-wrap color=negative").classes(BTN)
 
-    with ui.row().classes("w-full gap-4 items-start no-wrap mt-2"):
+    with ui.row().classes("w-full gap-4 items-start no-wrap mt-2 stack-phone"):  # one column on a phone, the current step first
         side = ui.column().classes("w-80 shrink-0 gap-0")
         main = ui.column().classes("grow gap-3 min-w-0")
 

@@ -246,7 +246,7 @@ async def rpc_page():
                  {"name": "description", "label": "Description", "field": "description", "align": "left"},
                  {"name": "args", "label": "Arguments", "field": "args", "align": "left", "classes": "mono"},
                  {"name": "use", "label": "", "field": "name", "align": "right"}],
-                rows, "name", RAIL_RPC, height="calc(100vh - var(--header-h) - 242px)", virtual=True)
+                rows, "name", RAIL_RPC, height="calc(var(--vh100) - var(--header-h) - 242px)", virtual=True)
             avail.bind_filter_from(find, "value")
             avail.add_slot("body-cell-type", '''
                 <q-td :props="props"><span :class="'pill ' + (props.value == 'read' ? 'pill-OPEN' : 'pill-other')">{{props.value}}</span></q-td>''')
